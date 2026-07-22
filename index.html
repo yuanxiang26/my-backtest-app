@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>極簡策略回測 App</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; max-width: 500px; margin: 0 auto; background: #f4f6f8; }
+    .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+    h2 { margin-top: 0; color: #1a202c; font-size: 20px; }
+    .form-group { margin-bottom: 15px; }
+    label { display: block; font-size: 14px; color: #4a5568; margin-bottom: 5px; font-weight: bold; }
+    select, input, button { width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
+    button { background: #3182ce; color: white; border: none; font-weight: bold; margin-top: 10px; cursor: pointer; }
+    button:hover { background: #2b6cb0; }
+    .result { margin-top: 20px; padding: 15px; background: #ebf8ff; border-radius: 8px; border-left: 4px solid #3182ce; display: none; }
+    .result-item { display: flex; justify-size: space-between; margin-bottom: 8px; font-size: 15px; }
+    .val { font-weight: bold; color: #2c5282; margin-left: auto; }
+  </style>
+</head>
+<body>
+
+<div class="card">
+  <h2>📈 隨身策略回測</h2>
+  
+  <div class="form-group">
+    <label>選擇股票</label>
+    <select id="stock">
+      <option value="2330.TW">台積電 (2330)</option>
+      <option value="2317.TW">鴻海 (2317)</option>
+      <option value="2454.TW">聯發科 (2454)</option>
+    </select>
+  </div>
+
+  <div class="form-group">
+    <label>選股條件 (均線黃金交叉)</label>
+    <div style="display: flex; gap: 10px;">
+      <input type="number" id="maShort" value="5" placeholder="短均線(天)">
+      <input type="number" id="maLong" value="20" placeholder="長均線(天)">
+    </div>
+  </div>
+
+  <button onclick="runBacktest()">⚡ 一秒回測</button>
+
+  <div id="resultBox" class="result">
+    <div class="result-item"><span>歷史勝率：</span><span id="winRate" class="val">--</span></div>
+    <div class="result-item"><span>累積報酬率：</span><span id="totalReturn" class="val">--</span></div>
+    <div class="result-item"><span>交易次數：</span><span id="tradeCount" class="val">--</span></div>
+  </div>
+</div>
+
+<script>
+async function runBacktest() {
+  const stock = document.getElementById('stock').value;
+  const maShort = parseInt(document.getElementById('maShort').value);
+  const maLong = parseInt(document.getElementById('maLong').value);
+  
+  if (maShort >= maLong) {
+    alert("短天期均線必須小於長天期均線！");
+    return;
+  }
+
+  document.getElementById('resultBox').style.display = 'block';
+  document.getElementById('winRate').innerText = '計算中...';
+  document.getElementById('totalReturn').innerText = '計算中...';
+  document.getElementById('tradeCount').innerText = '計算中...';
+
+  try {
+    // 透過 Yahoo Finance 公開 API 抓取歷史 K 線資料
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${stock}?range=1y&interval=1d`;
+    const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`);
+    const data = await res.json();
+    
+    const quotes = data.chart.result[0].indicators.quote[0].close;
+    const cleanQuotes = quotes.filter(p => p !== null);
+
+    // 向量計算 MA 與交易訊號
+    let trades = [];
+    for (let i = maLong; i < cleanQuotes.length - 5; i++) {
+      let maS = getMA(cleanQuotes, i, maShort);
+      let maL = getMA(cleanQuotes, i, maLong);
+      let prevMaS = getMA(cleanQuotes, i - 1, maShort);
+      let prevMaL = getMA(cleanQuotes, i - 1, maLong);
+
+      // 黃金交叉：前一天 MA短 <= MA長，今天 MA短 > MA長
+      if (prevMaS <= prevMaL && maS > maL) {
+        let buyPrice = cleanQuotes[i];
+        let sellPrice = cleanQuotes[i + 5]; // 持有 5 天賣出
+        let ret = (sellPrice - buyPrice) / buyPrice;
+        trades.push(ret);
+      }
+    }
+
+    if (trades.length === 0) {
+      alert("此期間無符合的交易訊號！");
+      return;
+    }
+
+    // 計算勝率與總報酬率
+    const wins = trades.filter(r => r > 0).length;
+    const winRate = ((wins / trades.length) * 100).toFixed(1);
+    const totalReturn = ((trades.reduce((acc, r) => (1 + acc) * (1 + r) - 1, 0)) * 100).toFixed(1);
+
+    document.getElementById('winRate').innerText = winRate + '%';
+    document.getElementById('totalReturn').innerText = totalReturn + '%';
+    document.getElementById('tradeCount').innerText = trades.length + ' 次';
+
+  } catch (err) {
+    alert("抓取歷史行情失敗，請稍後重試！");
+  }
+}
+
+function getMA(arr, index, period) {
+  let sum = 0;
+  for (let i = index - period + 1; i <= index; i++) {
+    sum += arr[i];
+  }
+  return sum / period;
+}
+</script>
+
+</body>
+</html>
