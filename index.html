@@ -3,126 +3,114 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>隨身e策略 - 回測與策略選股模組</title>
+  <title>隨身e策略 - 策略選股與一秒回測</title>
+  <!-- Chart.js 圖表繪製 -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    :root { --kgi-red: #d32f2f; --bg: #f5f5f5; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); margin: 0; padding: 15px; }
-    .app-card { background: white; border-radius: 12px; padding: 20px; max-width: 450px; margin: 0 auto; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-    .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--kgi-red); padding-bottom: 10px; margin-bottom: 15px; }
-    .title { font-size: 18px; font-weight: bold; color: #333; }
-    .badge { background: #e8f5e9; color: #2e7d32; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
-    .section-title { font-size: 14px; font-weight: bold; color: #666; margin: 15px 0 8px 0; }
+    :root { --kgi-red: #d32f2f; --bg: #f4f6f8; --card-bg: #ffffff; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); margin: 0; padding: 15px; color: #333; }
+    .app-card { background: var(--card-bg); border-radius: 16px; padding: 20px; max-width: 480px; margin: 0 auto; box-shadow: 0 8px 24px rgba(0,0,0,0.06); }
+    
+    /* Header & 免登入標籤 */
+    .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--kgi-red); padding-bottom: 12px; margin-bottom: 16px; }
+    .title { font-size: 18px; font-weight: bold; color: #1a1a1a; }
+    .badge-guest { background: #e8f5e9; color: #2e7d32; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+    
+    .section-title { font-size: 14px; font-weight: 700; color: #666; margin: 16px 0 8px 0; }
+    .select-box, .btn { width: 100%; padding: 12px; border-radius: 8px; font-size: 15px; margin-top: 8px; box-sizing: border-box; }
+    .select-box { border: 1px solid #dcdfe6; background: #fff; color: #333; outline: none; }
+    
+    /* 多維度條件標籤 (No-Code UI) */
     .tag-container { display: flex; flex-wrap: wrap; gap: 8px; }
-    .tag { padding: 8px 12px; border: 1px solid #ddd; border-radius: 20px; font-size: 13px; cursor: pointer; background: #fff; }
+    .tag { padding: 8px 14px; border: 1px solid #e0e0e0; border-radius: 20px; font-size: 13px; cursor: pointer; background: #fff; transition: all 0.2s; }
     .tag.active { background: #ffebee; border-color: var(--kgi-red); color: var(--kgi-red); font-weight: bold; }
-    .select-box, .btn { width: 100%; padding: 12px; border-radius: 8px; font-size: 15px; margin-top: 10px; box-sizing: border-box; }
-    .select-box { border: 1px solid #ccc; background: #fff; }
-    .btn-btn-primary { background: var(--kgi-red); color: white; border: none; font-weight: bold; cursor: pointer; }
-    .btn-btn-primary:hover { opacity: 0.9; }
-    .result-box { margin-top: 20px; padding: 15px; background: #fafafa; border-radius: 8px; border: 1px solid #eee; display: none; }
-    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; text-align: center; margin-bottom: 15px; }
-    .stat-card { background: white; padding: 10px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-    .stat-val { font-size: 20px; font-weight: bold; color: var(--kgi-red); }
-    .stat-label { font-size: 12px; color: #888; }
-    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; }
-    .modal-content { background: white; padding: 20px; border-radius: 12px; width: 80%; max-width: 300px; text-align: center; }
+    
+    /* 按鈕樣式 */
+    .btn-primary { background: var(--kgi-red); color: white; border: none; font-weight: bold; cursor: pointer; }
+    .btn-primary:hover { opacity: 0.9; }
+    .btn-success { background: #2e7d32; color: white; border: none; font-weight: bold; cursor: pointer; margin-top: 12px; }
+    
+    /* 回測結果區域 */
+    .result-box { margin-top: 20px; padding: 16px; background: #fafafa; border-radius: 12px; border: 1px solid #ebebeb; display: none; }
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; text-align: center; margin-bottom: 16px; }
+    .stat-card { background: white; padding: 12px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.04); }
+    .stat-val { font-size: 22px; font-weight: 800; color: var(--kgi-red); }
+    .stat-label { font-size: 12px; color: #888; margin-top: 4px; }
+    
+    .chart-container { position: relative; height: 180px; width: 100%; margin-bottom: 16px; }
+    .log-list { font-size: 12px; color: #444; max-height: 120px; overflow-y: auto; background: #fff; padding: 10px; border: 1px solid #e0e0e0; border-radius: 6px; line-height: 1.6; }
+
+    /* 2FA 模擬驗證彈窗 */
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 100; }
+    .modal-content { background: white; padding: 24px; border-radius: 16px; width: 85%; max-width: 320px; text-align: center; }
   </style>
 </head>
 <body>
 
 <div class="app-card">
+  <!-- Header -->
   <div class="header">
-    <span class="title">📈 自組策略與一秒回測</span>
-    <span class="badge">免登入體驗模式</span>
+    <span class="title">📈 策略選股與一秒回測</span>
+    <span class="badge-guest">免登入體驗模式</span>
   </div>
 
+  <!-- 1. 選擇標的 -->
   <div class="section-title">1. 選擇目標標的</div>
   <select id="stockSelect" class="select-box">
     <option value="2330.TW">2330 台積電</option>
     <option value="2317.TW">2317 鴻海</option>
     <option value="2454.TW">2454 聯發科</option>
+    <option value="0050.TW">0050 元大台灣50</option>
+    <option value="AAPL">AAPL 蘋果公司 (美股)</option>
   </select>
 
-  <div class="section-title">2. 勾選多維度條件 (可複選)</div>
+  <!-- 2. 多維度條件自組 -->
+  <div class="section-title">2. 勾選選股條件 (自組策略)</div>
   <div class="tag-container">
-    <div class="tag active" onclick="toggleTag(this)" data-type="ma">日 KD 黃金交叉</div>
-    <div class="tag" onclick="toggleTag(this)" data-type="chip">外資連續買超 > 3日</div>
-    <div class="tag" onclick="toggleTag(this)" data-type="fundamental">營收年增率 (YoY) > 10%</div>
+    <div class="tag active" id="condMA" onclick="toggleTag(this)">均線突破 (突破 5MA)</div>
+    <div class="tag" id="condKD" onclick="toggleTag(this)">KD 黃金交叉 (K > D)</div>
+    <div class="tag" id="condRSI" onclick="toggleTag(this)">RSI 低檔反彈 (RSI < 40)</div>
   </div>
 
-  <button class="btn btn-btn-primary" onclick="runBacktest()">⚡ 一秒回測歷史績效</button>
+  <!-- 3. 執行按鈕 -->
+  <button class="btn btn-primary" onclick="runStrategyBacktest()">⚡ 直連 Yahoo 數據並一秒回測</button>
 
+  <!-- 4. 回測結果產出 -->
   <div id="resultArea" class="result-box">
     <div class="stat-grid">
       <div class="stat-card">
-        <div class="stat-label">歷史勝率</div>
+        <div class="stat-label">歷史勝率 (Win Rate)</div>
         <div id="winRate" class="stat-val">--%</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">累積報酬率</div>
+        <div class="stat-label">累積總報酬率</div>
         <div id="totalReturn" class="stat-val">--%</div>
       </div>
     </div>
-    <button class="btn" style="background: #2e7d32; color: white; border: none;" onclick="openOrderModal()">🔒 轉為 e智慧單雲端監控 (需憑證)</button>
+
+    <!-- 累積權益曲線圖 -->
+    <div class="chart-container">
+      <canvas id="equityChart"></canvas>
+    </div>
+
+    <div class="section-title" style="margin-top:0;">歷史觸發訊號與買賣明細：</div>
+    <div id="logList" class="log-list"></div>
+
+    <!-- 5. 轉為 e智慧單 -->
+    <button class="btn btn-success" onclick="open2FA()">🔒 滿意策略？轉為 e智慧單雲端監控</button>
   </div>
 </div>
 
-<div id="orderModal" class="modal">
+<!-- 2FA 憑證驗證彈窗 -->
+<div id="authModal" class="modal">
   <div class="modal-content">
-    <h3>🔐 身分驗證 (2FA)</h3>
-    <p style="font-size: 13px; color: #666;">轉為自動下單監控屬於高風險交易動作，請登入帳號並載入電子簽章憑證。</p>
-    <button class="btn btn-btn-primary" onclick="closeOrderModal()">模擬憑證驗證並送出</button>
+    <h3 style="margin-top:0;">🔐 高風險動作驗證</h3>
+    <p style="font-size: 13px; color: #666; text-align: left;">轉為自動下單/雲端監控需載入憑證與雙因子驗證 (2FA)。</p>
+    <input type="password" placeholder="請輸入交易密碼" class="select-box" style="margin-bottom: 12px;">
+    <button class="btn btn-primary" onclick="confirm2FA()">簽署憑證並掛載監控 (90天)</button>
   </div>
 </div>
 
-<script>
-function toggleTag(el) {
-  el.classList.toggle('active');
-}
-
-async function runBacktest() {
-  const stock = document.getElementById('stockSelect').value;
-  const resultArea = document.getElementById('resultArea');
-  
-  resultArea.style.display = 'block';
-  document.getElementById('winRate').innerText = '計算中...';
-  document.getElementById('totalReturn').innerText = '計算中...';
-
-  try {
-    // 讀取歷史資料庫 (使用免費行情 API)
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${stock}?range=1y&interval=1d`;
-    const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`);
-    const data = await res.json();
-    const quotes = data.chart.result[0].indicators.quote[0].close.filter(p => p !== null);
-
-    // 向量計算 (模擬一秒回測引擎)
-    let trades = [];
-    for (let i = 20; i < quotes.length - 5; i++) {
-      if (quotes[i] > quotes[i-1]) { // 模擬條件觸發
-        let buy = quotes[i];
-        let sell = quotes[i+5];
-        trades.push((sell - buy) / buy);
-      }
-    }
-
-    const wins = trades.filter(r => r > 0).length;
-    const winRate = ((wins / trades.length) * 100).toFixed(1);
-    const totalReturn = ((trades.reduce((acc, r) => (1 + acc) * (1 + r) - 1, 0)) * 100).toFixed(1);
-
-    document.getElementById('winRate').innerText = winRate + '%';
-    document.getElementById('totalReturn').innerText = totalReturn + '%';
-  } catch (e) {
-    document.getElementById('winRate').innerText = '68.5%';
-    document.getElementById('totalReturn').innerText = '+24.3%';
-  }
-}
-
-function openOrderModal() { document.getElementById('orderModal').style.display = 'flex'; }
-function closeOrderModal() { 
-  document.getElementById('orderModal').style.display = 'none'; 
-  alert("已成功掛載至雲端 e智慧單監控！");
-}
-</script>
-
+<script src="app.js"></script>
 </body>
 </html>
