@@ -1,4 +1,4 @@
-// 預設可挑選的條件庫 (按面向劃分)
+// 條件資料庫
 const CONDITION_DATABASE = {
   tech: [
     { id: 'ma_up', name: '均線翻揚', type: 'tech' },
@@ -30,12 +30,10 @@ let editingCondId = null;
 let tempEditDays = 3;
 let chartInstance = null;
 
-// 初始化
 window.onload = () => {
   renderTabGrid();
 };
 
-// 頁籤切換
 function switchTab(tabKey) {
   activeTab = tabKey;
   document.querySelectorAll('.tab-item').forEach(el => el.classList.remove('active'));
@@ -43,7 +41,6 @@ function switchTab(tabKey) {
   renderTabGrid();
 }
 
-// 渲染條件按鈕區
 function renderTabGrid() {
   const grid = document.getElementById('condGrid');
   grid.innerHTML = '';
@@ -59,7 +56,6 @@ function renderTabGrid() {
   });
 }
 
-// 勾選/取消條件
 function toggleCondition(item) {
   const index = selectedConditions.findIndex(c => c.id === item.id);
   if (index >= 0) {
@@ -71,7 +67,6 @@ function toggleCondition(item) {
   renderTabGrid();
 }
 
-// 渲染頂部已選條件列表 (截圖 4)
 function renderSelectedConditions() {
   const container = document.getElementById('selectedCondList');
   container.innerHTML = '';
@@ -101,7 +96,6 @@ function removeCondition(id) {
   renderTabGrid();
 }
 
-// 編輯天數彈窗 (截圖 6)
 function openEditDialog(id) {
   editingCondId = id;
   const item = selectedConditions.find(c => c.id === id);
@@ -129,13 +123,12 @@ function confirmEditDays() {
   renderSelectedConditions();
 }
 
-// 設置多空方向
 function setDirection(dir) {
   document.getElementById('btnLong').classList.toggle('active', dir === 'long');
   document.getElementById('btnShort').classList.toggle('active', dir === 'short');
 }
 
-// 核心回測運算引擎 (對應截圖 9)
+// 核心回測運算 (具備自動備援代理與三條件出場機制)
 async function startBacktest() {
   if (selectedConditions.length === 0) {
     alert('請先勾選至少一個選股條件！');
@@ -146,91 +139,104 @@ async function startBacktest() {
   const stopLoss = parseFloat(document.getElementById('stopLossSelect').value);
   const holdDays = parseInt(document.getElementById('holdDaysSelect').value);
 
-  // 1. 直連 Yahoo API 取得歷史台股數據
-  try {
-    const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/2330.TW?range=5y&interval=1d`;
-    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
-    
-    const res = await fetch(proxyUrl);
-    const json = await res.json();
-    const result = json.chart.result[0];
-    const quotes = result.indicators.quote[0].close.filter(p => p !== null);
+  // 1. 自動備援 Proxy 清單
+  const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/2330.TW?range=5y&interval=1d`;
+  const proxies = [
+    `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`,
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,
+    `https://thingproxy.freeboard.io/fetch/${targetUrl}`
+  ];
 
-    // 2. 模擬回測 (三條件先觸及者出場：停利/停損/持有天數到)
-    let trades = [];
-    let wins = 0;
-    let equityCurve = [0];
-    let currentTotalReturn = 0;
-    let maxWin = 0;
-    let maxLoss = 0;
+  let json = null;
 
-    for (let i = 20; i < quotes.length - holdDays; i += 5) {
-      let entryPrice = quotes[i];
-      let exitPrice = quotes[i + holdDays];
-      let finalRet = (exitPrice - entryPrice) / entryPrice;
-
-      // 檢查中間天數是否觸及停利/停損
-      for (let day = 1; day <= holdDays; day++) {
-        let p = quotes[i + day];
-        let midRet = (p - entryPrice) / entryPrice;
-        if (midRet >= takeProfit) {
-          finalRet = takeProfit;
-          break;
-        } else if (midRet <= -stopLoss) {
-          finalRet = -stopLoss;
-          break;
-        }
+  for (let proxy of proxies) {
+    try {
+      const res = await fetch(proxy);
+      if (res.ok) {
+        json = await res.json();
+        if (json?.chart?.result?.[0]) break;
       }
+    } catch (e) {
+      console.warn('代理通道嘗試中...', proxy);
+    }
+  }
 
-      trades.push(finalRet);
-      if (finalRet > 0) wins++;
-      currentTotalReturn += finalRet * 100;
-      equityCurve.push(currentTotalReturn);
+  if (!json || !json.chart || !json.chart.result || !json.chart.result[0]) {
+    alert('歷史數據載入失敗，請確認網路連線或稍後再試！');
+    return;
+  }
 
-      if (finalRet > maxWin) maxWin = finalRet;
-      if (finalRet < maxLoss) maxLoss = finalRet;
+  const result = json.chart.result[0];
+  const quotes = result.indicators.quote[0].close.filter(p => p !== null);
+
+  // 2. 模擬回測 (停利、停損、持有天數 三條件先觸及者出場)
+  let trades = [];
+  let wins = 0;
+  let equityCurve = [0];
+  let currentTotalReturn = 0;
+  let maxWin = 0;
+  let maxLoss = 0;
+
+  for (let i = 20; i < quotes.length - holdDays; i += 5) {
+    let entryPrice = quotes[i];
+    let exitPrice = quotes[i + holdDays];
+    let finalRet = (exitPrice - entryPrice) / entryPrice;
+
+    for (let day = 1; day <= holdDays; day++) {
+      let p = quotes[i + day];
+      let midRet = (p - entryPrice) / entryPrice;
+      if (midRet >= takeProfit) {
+        finalRet = takeProfit;
+        break;
+      } else if (midRet <= -stopLoss) {
+        finalRet = -stopLoss;
+        break;
+      }
     }
 
-    // 3. 填入報表數據 (截圖 9)
-    const winRate = ((wins / trades.length) * 100).toFixed(2);
-    const totalReturn = (equityCurve[equityCurve.length - 1]).toFixed(2);
-    const avgReturn = (totalReturn / trades.length).toFixed(2);
+    trades.push(finalRet);
+    if (finalRet > 0) wins++;
+    currentTotalReturn += finalRet * 100;
+    equityCurve.push(currentTotalReturn);
 
-    document.getElementById('resTrades').innerText = trades.length;
-    document.getElementById('resWinRate').innerText = `${winRate}%`;
-    document.getElementById('resTotalReturn').innerText = `${totalReturn}%`;
-    document.getElementById('resAvgReturn').innerText = `${avgReturn}%`;
-    document.getElementById('resMaxWin').innerText = `${(maxWin * 100).toFixed(2)}%`;
-    document.getElementById('resMaxSeqWin').innerText = `11.20%`;
-    document.getElementById('resMaxLoss').innerText = `${(maxLoss * 100).toFixed(2)}%`;
-
-    // 繪製走勢圖 (截圖 9)
-    renderReturnChart(equityCurve);
-
-    // 4. 跳出完成回測彈窗 (截圖 9 經典提示)
-    const tpText = takeProfit === 999 ? '不停利' : `停利${takeProfit * 100}%`;
-    const slText = stopLoss === 999 ? '不停損' : `停損${stopLoss * 100}%`;
-    const hdText = holdDays === 999 ? '持續持有' : `持有${holdDays}天`;
-
-    document.getElementById('modalText').innerHTML = `
-      <b>假設設定：</b><br>
-      ${tpText}、${slText}、${hdText}<br><br>
-      <b>出場狀況：</b><br>
-      這三個條件中任一條件先觸及到，就會以該條件出場。
-    `;
-    document.getElementById('modalOverlay').style.display = 'flex';
-    document.getElementById('reportBox').style.display = 'block';
-
-  } catch (e) {
-    alert('歷史數據載入失敗，請稍後重試！');
+    if (finalRet > maxWin) maxWin = finalRet;
+    if (finalRet < maxLoss) maxLoss = finalRet;
   }
+
+  // 3. 填入數據至畫面 (對應截圖 9)
+  const winRate = ((wins / trades.length) * 100).toFixed(2);
+  const totalReturn = (equityCurve[equityCurve.length - 1]).toFixed(2);
+  const avgReturn = (totalReturn / trades.length).toFixed(2);
+
+  document.getElementById('resTrades').innerText = trades.length;
+  document.getElementById('resWinRate').innerText = `${winRate}%`;
+  document.getElementById('resTotalReturn').innerText = `${totalReturn}%`;
+  document.getElementById('resAvgReturn').innerText = `${avgReturn}%`;
+  document.getElementById('resMaxWin').innerText = `${(maxWin * 100).toFixed(2)}%`;
+  document.getElementById('resMaxSeqWin').innerText = `11.20%`;
+  document.getElementById('resMaxLoss').innerText = `${(maxLoss * 100).toFixed(2)}%`;
+
+  renderReturnChart(equityCurve);
+
+  // 4. 跳出經典黃色彈窗 (對應截圖 9)
+  const tpText = takeProfit === 999 ? '不停利' : `停利${takeProfit * 100}%`;
+  const slText = stopLoss === 999 ? '不停損' : `停損${stopLoss * 100}%`;
+  const hdText = holdDays === 999 ? '持續持有' : `持有${holdDays}天`;
+
+  document.getElementById('modalText').innerHTML = `
+    <b>假設設定：</b><br>
+    ${tpText}、${slText}、${hdText}<br><br>
+    <b>出場狀況：</b><br>
+    這三個條件中任一條件先觸及到，就會以該條件出場。
+  `;
+  document.getElementById('modalOverlay').style.display = 'flex';
+  document.getElementById('reportBox').style.display = 'block';
 }
 
 function closeModal() {
   document.getElementById('modalOverlay').style.display = 'none';
 }
 
-// 繪製報酬率走勢圖
 function renderReturnChart(data) {
   const ctx = document.getElementById('returnChart').getContext('2d');
   if (chartInstance) chartInstance.destroy();
