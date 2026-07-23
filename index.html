@@ -3,111 +3,345 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>隨身e策略 - 策略選股與一秒回測</title>
-  <!-- Chart.js 圖表繪製 -->
+  <title>策略選股-自訂選股與回測</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    :root { --kgi-red: #d32f2f; --bg: #f4f6f8; --card-bg: #ffffff; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); margin: 0; padding: 15px; color: #333; }
-    .app-card { background: var(--card-bg); border-radius: 16px; padding: 20px; max-width: 480px; margin: 0 auto; box-shadow: 0 8px 24px rgba(0,0,0,0.06); }
-    
-    /* Header & 免登入標籤 */
-    .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--kgi-red); padding-bottom: 12px; margin-bottom: 16px; }
-    .title { font-size: 18px; font-weight: bold; color: #1a1a1a; }
-    .badge-guest { background: #e8f5e9; color: #2e7d32; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
-    
-    .section-title { font-size: 14px; font-weight: 700; color: #666; margin: 16px 0 8px 0; }
-    .select-box, .btn { width: 100%; padding: 12px; border-radius: 8px; font-size: 15px; margin-top: 8px; box-sizing: border-box; }
-    .select-box { border: 1px solid #dcdfe6; background: #fff; color: #333; outline: none; }
-    
-    /* 多維度條件標籤 (No-Code UI) */
-    .tag-container { display: flex; flex-wrap: wrap; gap: 8px; }
-    .tag { padding: 8px 14px; border: 1px solid #e0e0e0; border-radius: 20px; font-size: 13px; cursor: pointer; background: #fff; transition: all 0.2s; }
-    .tag.active { background: #ffebee; border-color: var(--kgi-red); color: var(--kgi-red); font-weight: bold; }
-    
-    /* 按鈕樣式 */
-    .btn-primary { background: var(--kgi-red); color: white; border: none; font-weight: bold; cursor: pointer; }
-    .btn-primary:hover { opacity: 0.9; }
-    .btn-success { background: #2e7d32; color: white; border: none; font-weight: bold; cursor: pointer; margin-top: 12px; }
-    
-    /* 回測結果區域 */
-    .result-box { margin-top: 20px; padding: 16px; background: #fafafa; border-radius: 12px; border: 1px solid #ebebeb; display: none; }
-    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; text-align: center; margin-bottom: 16px; }
-    .stat-card { background: white; padding: 12px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.04); }
-    .stat-val { font-size: 22px; font-weight: 800; color: var(--kgi-red); }
-    .stat-label { font-size: 12px; color: #888; margin-top: 4px; }
-    
-    .chart-container { position: relative; height: 180px; width: 100%; margin-bottom: 16px; }
-    .log-list { font-size: 12px; color: #444; max-height: 120px; overflow-y: auto; background: #fff; padding: 10px; border: 1px solid #e0e0e0; border-radius: 6px; line-height: 1.6; }
+    :root {
+      --bg-dark: #0a0f1d;
+      --card-bg: #121929;
+      --panel-bg: #1a233a;
+      --accent-blue: #1890ff;
+      --accent-red: #ff4d4f;
+      --accent-green: #52c41a;
+      --text-main: #ffffff;
+      --text-sub: #8c9ba5;
+      --border-color: #26344d;
+    }
 
-    /* 2FA 模擬驗證彈窗 */
-    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 100; }
-    .modal-content { background: white; padding: 24px; border-radius: 16px; width: 85%; max-width: 320px; text-align: center; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg-dark);
+      color: var(--text-main);
+      margin: 0;
+      padding: 12px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .app-container {
+      width: 100%;
+      max-width: 480px;
+      background: var(--card-bg);
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      border: 1px solid var(--border-color);
+    }
+
+    /* 頂部 Header */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border-color);
+    }
+    .header-title { font-size: 18px; font-weight: bold; }
+    .header-btn { color: var(--accent-blue); cursor: pointer; font-size: 14px; }
+
+    /* 已選條件區域 (截圖 4, 5) */
+    .selected-conditions-box {
+      margin: 12px 0;
+      background: var(--panel-bg);
+      border-radius: 8px;
+      padding: 10px;
+    }
+    .cond-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #101625;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 8px 12px;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+    .cond-item:last-child { margin-bottom: 0; }
+    .cond-actions { display: flex; gap: 10px; align-items: center; }
+    .icon-edit { color: #40a9ff; cursor: pointer; }
+    .icon-remove { color: var(--text-sub); cursor: pointer; font-weight: bold; }
+
+    /* 五大面向 Tab (截圖 4) */
+    .tab-bar {
+      display: flex;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border-color);
+      margin-bottom: 12px;
+    }
+    .tab-item {
+      padding: 8px 4px;
+      font-size: 14px;
+      color: var(--text-sub);
+      cursor: pointer;
+      position: relative;
+    }
+    .tab-item.active {
+      color: var(--accent-blue);
+      font-weight: bold;
+    }
+    .tab-item.active::after {
+      content: '';
+      position: absolute;
+      bottom: -1px;
+      left: 0; width: 100%;
+      height: 2px;
+      background: var(--accent-blue);
+    }
+
+    /* 條件按鈕 Grid */
+    .cond-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .grid-btn {
+      background: var(--panel-bg);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      text-align: center;
+      cursor: pointer;
+    }
+    .grid-btn.selected {
+      border-color: var(--accent-blue);
+      background: #112a45;
+      color: var(--accent-blue);
+    }
+
+    /* 回測控制下拉選單區 (截圖 7, 8) */
+    .backtest-controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .control-select {
+      background: var(--panel-bg);
+      color: var(--text-main);
+      border: 1px solid var(--border-color);
+      padding: 8px;
+      border-radius: 6px;
+      font-size: 13px;
+      outline: none;
+    }
+    .sub-controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .dir-btn {
+      background: var(--panel-bg);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 8px;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      text-align: center;
+    }
+    .dir-btn.active {
+      background: var(--accent-blue);
+      color: #fff;
+    }
+    .btn-exec {
+      background: #d48806;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    /* 回測彈窗 (截圖 9) */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.7);
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+    .modal-card {
+      background: #fffbe6;
+      color: #1f1f1f;
+      border-radius: 12px;
+      width: 85%;
+      max-width: 320px;
+      padding: 20px;
+      text-align: center;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+    .modal-title { font-size: 18px; font-weight: bold; margin-bottom: 12px; border-bottom: 1px solid #ffe58f; padding-bottom: 8px; }
+    .modal-body { font-size: 14px; line-height: 1.6; margin-bottom: 16px; color: #434343; }
+
+    /* 回測報表數據 (截圖 9 底層) */
+    .report-box {
+      display: none;
+      background: var(--panel-bg);
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 16px;
+    }
+    .chart-container { height: 160px; width: 100%; margin-bottom: 12px; }
+    .report-table { width: 100%; font-size: 13px; border-collapse: collapse; }
+    .report-table td { padding: 6px 0; border-bottom: 1px solid var(--border-color); }
+    .report-table td:last-child { text-align: right; font-weight: bold; }
+    .val-red { color: var(--accent-red); }
+    .val-green { color: var(--accent-green); }
+
+    /* 參數編輯彈窗 (截圖 6) */
+    .edit-dialog {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.7);
+      justify-content: center;
+      align-items: center;
+      z-index: 1001;
+    }
+    .edit-card {
+      background: var(--panel-bg);
+      border-radius: 12px;
+      padding: 20px;
+      width: 80%;
+      max-width: 300px;
+      border: 1px solid var(--border-color);
+    }
+    .days-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+    .day-btn {
+      background: #101625;
+      border: 1px solid var(--border-color);
+      color: #fff;
+      padding: 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      text-align: center;
+    }
+    .day-btn.active { border-color: var(--accent-blue); background: #112a45; color: var(--accent-blue); }
   </style>
 </head>
 <body>
 
-<div class="app-card">
+<div class="app-container">
   <!-- Header -->
   <div class="header">
-    <span class="title">📈 策略選股與一秒回測</span>
-    <span class="badge-guest">免登入體驗模式</span>
+    <span class="header-btn" onclick="history.back()">&lt; 取消</span>
+    <span class="header-title">我的選股</span>
+    <span class="header-btn">儲存</span>
   </div>
 
-  <!-- 1. 選擇標的 -->
-  <div class="section-title">1. 選擇目標標的</div>
-  <select id="stockSelect" class="select-box">
-    <option value="2330.TW">2330 台積電</option>
-    <option value="2317.TW">2317 鴻海</option>
-    <option value="2454.TW">2454 聯發科</option>
-    <option value="0050.TW">0050 元大台灣50</option>
-    <option value="AAPL">AAPL 蘋果公司 (美股)</option>
-  </select>
-
-  <!-- 2. 多維度條件自組 -->
-  <div class="section-title">2. 勾選選股條件 (自組策略)</div>
-  <div class="tag-container">
-    <div class="tag active" id="condMA" onclick="toggleTag(this)">均線突破 (突破 5MA)</div>
-    <div class="tag" id="condKD" onclick="toggleTag(this)">KD 黃金交叉 (K > D)</div>
-    <div class="tag" id="condRSI" onclick="toggleTag(this)">RSI 低檔反彈 (RSI < 40)</div>
+  <!-- 已挑選的條件列表 (截圖 4, 5) -->
+  <div class="selected-conditions-box">
+    <div style="font-size: 12px; color: var(--text-sub); margin-bottom: 8px;" id="condSummary">已選 0 個條件，選出共 0 檔</div>
+    <div id="selectedCondList"></div>
   </div>
 
-  <!-- 3. 執行按鈕 -->
-  <button class="btn btn-primary" onclick="runStrategyBacktest()">⚡ 直連 Yahoo 數據並一秒回測</button>
+  <!-- 五大選股面向 Tab (截圖 4) -->
+  <div class="tab-bar">
+    <div class="tab-item active" onclick="switchTab('tech')">技術</div>
+    <div class="tab-item" onclick="switchTab('chip')">籌碼</div>
+    <div class="tab-item" onclick="switchTab('base')">基本</div>
+    <div class="tab-item" onclick="switchTab('rank')">排行</div>
+    <div class="tab-item" onclick="switchTab('ex')">獨家</div>
+  </div>
 
-  <!-- 4. 回測結果產出 -->
-  <div id="resultArea" class="result-box">
-    <div class="stat-grid">
-      <div class="stat-card">
-        <div class="stat-label">歷史勝率 (Win Rate)</div>
-        <div id="winRate" class="stat-val">--%</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">累積總報酬率</div>
-        <div id="totalReturn" class="stat-val">--%</div>
-      </div>
-    </div>
+  <!-- 條件選擇按鈕區域 -->
+  <div id="condGrid" class="cond-grid"></div>
 
-    <!-- 累積權益曲線圖 -->
+  <!-- 回測設定與執行區 (截圖 7, 8) -->
+  <div class="backtest-controls">
+    <select id="takeProfitSelect" class="control-select">
+      <option value="0.05">停利5%</option>
+      <option value="0.10">停利10%</option>
+      <option value="0.15">停利15%</option>
+      <option value="0.20">停利20%</option>
+      <option value="999">不停利</option>
+    </select>
+    <select id="stopLossSelect" class="control-select">
+      <option value="0.05">停損5%</option>
+      <option value="0.10" selected>停損10%</option>
+      <option value="0.15">停損15%</option>
+      <option value="0.20">停損20%</option>
+      <option value="999">不停損</option>
+    </select>
+    <select id="holdDaysSelect" class="control-select">
+      <option value="1">持有1日</option>
+      <option value="5">持有5日</option>
+      <option value="10" selected>持有10日</option>
+      <option value="20">持有20日</option>
+      <option value="999">持續持有</option>
+    </select>
+  </div>
+
+  <div class="sub-controls">
+    <div id="btnLong" class="dir-btn active" onclick="setDirection('long')">多方</div>
+    <div id="btnShort" class="dir-btn" onclick="setDirection('short')">空方</div>
+    <select id="periodSelect" class="control-select" style="grid-column: span 1;">
+      <option value="1">回測近一年</option>
+      <option value="2">回測近兩年</option>
+      <option value="3">回測近三年</option>
+      <option value="5" selected>回測近五年</option>
+    </select>
+    <button class="btn-exec" onclick="startBacktest()">回測</button>
+  </div>
+
+  <!-- 回測結果報表與走勢圖 (截圖 9) -->
+  <div id="reportBox" class="report-box">
+    <div style="font-size: 12px; color: var(--text-sub); margin-bottom: 4px;">報酬走勢</div>
     <div class="chart-container">
-      <canvas id="equityChart"></canvas>
+      <canvas id="returnChart"></canvas>
     </div>
-
-    <div class="section-title" style="margin-top:0;">歷史觸發訊號與買賣明細：</div>
-    <div id="logList" class="log-list"></div>
-
-    <!-- 5. 轉為 e智慧單 -->
-    <button class="btn btn-success" onclick="open2FA()">🔒 滿意策略？轉為 e智慧單雲端監控</button>
+    <table class="report-table">
+      <tr><td>交易次數</td><td id="resTrades">0</td></tr>
+      <tr><td>勝率</td><td id="resWinRate" class="val-red">0.00%</td></tr>
+      <tr><td>總報酬率</td><td id="resTotalReturn" class="val-red">0.00%</td></tr>
+      <tr><td>平均報酬率</td><td id="resAvgReturn">0.00%</td></tr>
+      <tr><td>最大獲利率</td><td id="resMaxWin" class="val-red">0.00%</td></tr>
+      <tr><td>最大連續獲利率</td><td id="resMaxSeqWin" class="val-red">0.00%</td></tr>
+      <tr><td>最大虧損率</td><td id="resMaxLoss" class="val-green">0.00%</td></tr>
+    </table>
   </div>
 </div>
 
-<!-- 2FA 憑證驗證彈窗 -->
-<div id="authModal" class="modal">
-  <div class="modal-content">
-    <h3 style="margin-top:0;">🔐 高風險動作驗證</h3>
-    <p style="font-size: 13px; color: #666; text-align: left;">轉為自動下單/雲端監控需載入憑證與雙因子驗證 (2FA)。</p>
-    <input type="password" placeholder="請輸入交易密碼" class="select-box" style="margin-bottom: 12px;">
-    <button class="btn btn-primary" onclick="confirm2FA()">簽署憑證並掛載監控 (90天)</button>
+<!-- 完成回測對話框 (截圖 9 提示) -->
+<div id="modalOverlay" class="modal-overlay">
+  <div class="modal-card">
+    <div class="modal-title">完成回測</div>
+    <div class="modal-body" id="modalText"></div>
+    <button style="background: var(--accent-blue); color: #fff; border: none; padding: 8px 24px; border-radius: 6px; font-weight: bold; cursor: pointer;" onclick="closeModal()">確定</button>
+  </div>
+</div>
+
+<!-- 參數編輯彈窗 (截圖 6) -->
+<div id="editDialog" class="edit-dialog">
+  <div class="edit-card">
+    <div style="font-size: 16px; font-weight: bold; margin-bottom: 12px;" id="editTitle">編輯天數</div>
+    <div class="days-grid">
+      <div class="day-btn active" onclick="selectEditDays(3, this)">3日</div>
+      <div class="day-btn" onclick="selectEditDays(5, this)">5日</div>
+      <div class="day-btn" onclick="selectEditDays(10, this)">10日</div>
+      <div class="day-btn" onclick="selectEditDays(20, this)">20日</div>
+    </div>
+    <div style="display: flex; gap: 10px; margin-top: 16px;">
+      <button style="flex:1; background: transparent; border: 1px solid var(--border-color); color: #fff; padding: 8px; border-radius: 6px;" onclick="closeEditDialog()">取消</button>
+      <button style="flex:1; background: var(--accent-blue); border: none; color: #fff; padding: 8px; border-radius: 6px; font-weight: bold;" onclick="confirmEditDays()">確認</button>
+    </div>
   </div>
 </div>
 
