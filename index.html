@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>凱基隨身e策略 - 旗艦量化回測系統</title>
+  <title>凱基隨身e策略 - Yahoo真實數據量化回測</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     :root {
@@ -34,33 +34,28 @@
       box-sizing: border-box; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
     }
 
-    /* 頂部三選一 Tab */
     .top-nav { display: flex; background: var(--panel-bg); border-radius: 8px; padding: 3px; margin-bottom: 12px; }
     .nav-btn { flex: 1; text-align: center; padding: 8px 0; font-size: 13px; color: var(--text-sub); cursor: pointer; border-radius: 6px; }
     .nav-btn.active { background: var(--accent-blue); color: #fff; font-weight: bold; }
 
-    /* 已選條件區 */
+    .stock-input-box { display: flex; gap: 8px; margin-bottom: 12px; }
+    .stock-input { flex: 1; background: var(--panel-bg); border: 1px solid var(--border-color); color: #fff; padding: 8px 12px; border-radius: 6px; font-size: 13px; }
+
     .selected-box { background: var(--panel-bg); border-radius: 8px; padding: 10px; margin-bottom: 12px; }
     .cond-item { display: flex; justify-content: space-between; align-items: center; background: #101625; border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 12px; margin-bottom: 6px; font-size: 13px; }
-    .icon-action { cursor: pointer; font-size: 14px; margin-left: 8px; }
 
-    /* 面向 Tab */
     .tab-bar { display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-color); margin-bottom: 12px; }
-    .tab-item { padding: 8px 0; font-size: 13px; color: var(--text-sub); cursor: pointer; position: relative; flex: 1; text-align: center; }
+    .tab-item { padding: 8px 0; font-size: 13px; color: var(--text-sub); cursor: pointer; flex: 1; text-align: center; position: relative; }
     .tab-item.active { color: var(--accent-blue); font-weight: bold; }
     .tab-item.active::after { content: ''; position: absolute; bottom: -1px; left: 0; width: 100%; height: 2px; background: var(--accent-blue); }
 
-    /* 條件 Grid */
     .cond-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
     .grid-btn { background: var(--panel-bg); border: 1px solid var(--border-color); color: #fff; padding: 10px; border-radius: 6px; font-size: 12px; text-align: center; cursor: pointer; }
     .grid-btn.selected { border-color: var(--accent-blue); background: #112a45; color: var(--accent-blue); }
 
-    /* 差異化功能：風控與交易成本優化選單 */
     .opt-box { background: #101625; border: 1px dashed var(--accent-blue); border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; font-size: 12px; }
     .opt-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
-    .opt-row:last-child { margin-bottom: 0; }
 
-    /* 回測參數控制 */
     .backtest-controls { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 8px; }
     .control-select { background: var(--panel-bg); color: #fff; border: 1px solid var(--border-color); padding: 8px; border-radius: 6px; font-size: 12px; outline: none; }
     .sub-controls { display: grid; grid-template-columns: 1fr 1fr 1.5fr 1fr; gap: 6px; margin-bottom: 12px; }
@@ -68,24 +63,17 @@
     .dir-btn.active { background: var(--accent-blue); }
     .btn-exec { background: var(--accent-gold); color: #000; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 13px; }
 
-    /* AI 診斷卡片 (差異化亮點) */
     .ai-card { background: linear-gradient(135deg, #112645 0%, #1a1a3a 100%); border: 1px solid var(--accent-blue); border-radius: 8px; padding: 12px; margin-bottom: 12px; display: none; }
-    .ai-header { display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: bold; color: var(--accent-gold); margin-bottom: 6px; }
-
-    /* 報表區 */
     .report-box { background: var(--panel-bg); border-radius: 8px; padding: 12px; display: none; }
     .chart-container { height: 160px; width: 100%; margin-bottom: 12px; }
     .report-table { width: 100%; font-size: 12px; border-collapse: collapse; }
     .report-table td { padding: 5px 0; border-bottom: 1px solid var(--border-color); }
     .report-table td:last-child { text-align: right; font-weight: bold; }
 
-    /* 股票清單與互動區 */
     .stock-list { margin-top: 12px; border-top: 1px solid var(--border-color); padding-top: 12px; }
     .stock-row { display: flex; justify-content: space-between; align-items: center; background: #101625; padding: 8px 12px; border-radius: 6px; margin-bottom: 6px; font-size: 13px; }
     .stock-name { color: var(--accent-blue); cursor: pointer; font-weight: bold; }
-    .stock-price { cursor: pointer; text-align: right; }
 
-    /* 通用 Modal 彈窗 */
     .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.75); justify-content: center; align-items: center; z-index: 1000; }
     .modal-card { background: var(--card-bg); border: 1px solid var(--border-color); color: #fff; border-radius: 12px; width: 85%; max-width: 320px; padding: 16px; text-align: center; }
   </style>
@@ -93,20 +81,21 @@
 <body>
 
 <div class="app-container">
-  <!-- 三大策略選股功能 Tab -->
   <div class="top-nav">
     <div class="nav-btn" onclick="setNav('kgi')">KGI選股</div>
     <div class="nav-btn" onclick="setNav('cond')">條件選股</div>
     <div class="nav-btn active" onclick="setNav('custom')">自訂選股</div>
   </div>
 
-  <!-- 已挑選條件區 -->
+  <div class="stock-input-box">
+    <input type="text" id="stockIdInput" class="stock-input" value="2330.TW" placeholder="輸入股票代碼 (例: 2330.TW, 2317.TW, 0050.TW)">
+  </div>
+
   <div class="selected-box">
     <div style="font-size: 11px; color: var(--text-sub); margin-bottom: 6px;" id="condSummary">已選 0 個條件</div>
     <div id="selectedCondList"></div>
   </div>
 
-  <!-- 四大面向 Tab -->
   <div class="tab-bar">
     <div class="tab-item active" onclick="switchTab('tech')">技術</div>
     <div class="tab-item" onclick="switchTab('chip')">籌碼</div>
@@ -116,7 +105,6 @@
 
   <div id="condGrid" class="cond-grid"></div>
 
-  <!-- 差異化優化：真實交易摩擦成本與極端風控選單 -->
   <div class="opt-box">
     <div class="opt-row">
       <span>手續費折讓:</span>
@@ -126,17 +114,8 @@
         <option value="1.00">不折讓 (全額)</option>
       </select>
     </div>
-    <div class="opt-row">
-      <span>極端事件壓力測試:</span>
-      <select id="stressSelect" style="background:var(--panel-bg); color:#fff; border:none; border-radius:4px; padding:2px 4px; font-size:11px;">
-        <option value="none">正常全區間回測</option>
-        <option value="2020">2020年 疫情崩盤洗牌</option>
-        <option value="2022">2022年 升息循環回檔</option>
-      </select>
-    </div>
   </div>
 
-  <!-- 回測控制選項 -->
   <div class="backtest-controls">
     <select id="takeProfitSelect" class="control-select">
       <option value="0.05">停利5%</option>
@@ -165,26 +144,24 @@
     <div id="btnLong" class="dir-btn active" onclick="setDirection('long')">多方</div>
     <div id="btnShort" class="dir-btn" onclick="setDirection('short')">空方</div>
     <select id="periodSelect" class="control-select">
-      <option value="1">近一年</option>
-      <option value="2">近兩年</option>
-      <option value="3">近三年</option>
-      <option value="5" selected>近五年</option>
+      <option value="1y">近一年</option>
+      <option value="2y">近兩年</option>
+      <option value="3y">近三年</option>
+      <option value="5y" selected>近五年</option>
     </select>
-    <button class="btn-exec" onclick="startBacktest()">開始回測</button>
+    <button class="btn-exec" id="btnExec" onclick="startYahooBacktest()">開始回測</button>
   </div>
 
-  <!-- AI 智慧診斷面板 (差異化亮點) -->
   <div id="aiCard" class="ai-card">
-    <div class="ai-header">
+    <div style="display:flex; justify-content:space-between; font-weight:bold; color:var(--accent-gold); margin-bottom:6px;">
       <span>🤖 AI 策略健康度診斷</span>
       <span id="aiScoreTag" style="background:var(--accent-gold); color:#000; padding:1px 6px; border-radius:4px;">評級: A</span>
     </div>
     <div id="aiReportText" style="font-size:12px; color:#d9d9d9; line-height:1.5;"></div>
   </div>
 
-  <!-- 回測報表 -->
   <div id="reportBox" class="report-box">
-    <div style="font-size: 11px; color: var(--text-sub); margin-bottom: 4px;">報酬走勢 (已扣除真實交易成本)</div>
+    <div style="font-size: 11px; color: var(--text-sub); margin-bottom: 4px;">Yahoo 真實報酬走勢 (已扣除交易成本)</div>
     <div class="chart-container">
       <canvas id="returnChart"></canvas>
     </div>
@@ -200,14 +177,12 @@
     </table>
   </div>
 
-  <!-- 篩選出的股票清單 (支援雙向點擊互動) -->
   <div class="stock-list">
-    <div style="font-size: 12px; color: var(--text-sub); margin-bottom: 6px;">符合策略選股清單 (點擊名稱下單 / 點擊價格看行情):</div>
+    <div style="font-size: 12px; color: var(--text-sub); margin-bottom: 6px;">符合策略個股 (點擊名稱下單 / 點擊價格看行情):</div>
     <div id="stockRows"></div>
   </div>
 </div>
 
-<!-- 彈窗Modal -->
 <div id="modalOverlay" class="modal-overlay">
   <div class="modal-card" id="modalCard"></div>
 </div>
