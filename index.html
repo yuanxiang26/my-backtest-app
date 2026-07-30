@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>凱基隨身e策略 - Yahoo真實數據量化回測</title>
+  <title>凱基隨身e策略 - 旗艦量化回測系統</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     :root {
@@ -21,16 +21,13 @@
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: var(--bg-dark);
-      color: var(--text-main);
-      margin: 0; padding: 12px;
-      display: flex; justify-content: center;
+      background: var(--bg-dark); color: var(--text-main);
+      margin: 0; padding: 12px; display: flex; justify-content: center;
     }
 
     .app-container {
-      width: 100%; max-width: 480px;
-      background: var(--card-bg); border-radius: 12px;
-      padding: 16px; border: 1px solid var(--border-color);
+      width: 100%; max-width: 480px; background: var(--card-bg);
+      border-radius: 12px; padding: 16px; border: 1px solid var(--border-color);
       box-sizing: border-box; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
     }
 
@@ -53,8 +50,8 @@
     .grid-btn { background: var(--panel-bg); border: 1px solid var(--border-color); color: #fff; padding: 10px; border-radius: 6px; font-size: 12px; text-align: center; cursor: pointer; }
     .grid-btn.selected { border-color: var(--accent-blue); background: #112a45; color: var(--accent-blue); }
 
-    .opt-box { background: #101625; border: 1px dashed var(--accent-blue); border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; font-size: 12px; }
-    .opt-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+    .capital-box { background: #101625; border: 1px dashed var(--accent-blue); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; font-size: 12px; }
+    .capital-row { display: flex; justify-content: space-between; align-items: center; }
 
     .backtest-controls { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 8px; }
     .control-select { background: var(--panel-bg); color: #fff; border: 1px solid var(--border-color); padding: 8px; border-radius: 6px; font-size: 12px; outline: none; }
@@ -63,9 +60,11 @@
     .dir-btn.active { background: var(--accent-blue); }
     .btn-exec { background: var(--accent-gold); color: #000; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 13px; }
 
-    .ai-card { background: linear-gradient(135deg, #112645 0%, #1a1a3a 100%); border: 1px solid var(--accent-blue); border-radius: 8px; padding: 12px; margin-bottom: 12px; display: none; }
+    /* 心理成本卡片 */
+    .pain-card { background: linear-gradient(135deg, #1f1d2b 0%, #2a1a2e 100%); border: 1px solid #ff7875; border-radius: 8px; padding: 12px; margin-bottom: 12px; display: none; font-size: 12px; }
+
     .report-box { background: var(--panel-bg); border-radius: 8px; padding: 12px; display: none; }
-    .chart-container { height: 160px; width: 100%; margin-bottom: 12px; }
+    .chart-container { height: 180px; width: 100%; margin-bottom: 12px; }
     .report-table { width: 100%; font-size: 12px; border-collapse: collapse; }
     .report-table td { padding: 5px 0; border-bottom: 1px solid var(--border-color); }
     .report-table td:last-child { text-align: right; font-weight: bold; }
@@ -88,7 +87,7 @@
   </div>
 
   <div class="stock-input-box">
-    <input type="text" id="stockIdInput" class="stock-input" value="2330.TW" placeholder="輸入股票代碼 (例: 2330.TW, 2317.TW, 0050.TW)">
+    <input type="text" id="stockIdInput" class="stock-input" value="2330.TW" placeholder="輸入標的代碼 (例: 2330.TW, 2317.TW)">
   </div>
 
   <div class="selected-box">
@@ -105,14 +104,13 @@
 
   <div id="condGrid" class="cond-grid"></div>
 
-  <div class="opt-box">
-    <div class="opt-row">
-      <span>手續費折讓:</span>
-      <select id="discountSelect" style="background:var(--panel-bg); color:#fff; border:none; border-radius:4px; padding:2px 4px; font-size:11px;">
-        <option value="0.28">28折 (券商優惠)</option>
-        <option value="0.60">6折 (一般折讓)</option>
-        <option value="1.00">不折讓 (全額)</option>
-      </select>
+  <!-- 實質優化：資金與配張選單 -->
+  <div class="capital-box">
+    <div class="capital-row">
+      <span>假設投入總資金:</span>
+      <div>
+        <input type="number" id="capitalInput" value="100" style="width:60px; background:var(--panel-bg); border:1px solid var(--border-color); color:#fff; border-radius:4px; padding:2px 4px; text-align:center; font-size:12px;"> 萬元
+      </div>
     </div>
   </div>
 
@@ -152,16 +150,14 @@
     <button class="btn-exec" id="btnExec" onclick="startYahooBacktest()">開始回測</button>
   </div>
 
-  <div id="aiCard" class="ai-card">
-    <div style="display:flex; justify-content:space-between; font-weight:bold; color:var(--accent-gold); margin-bottom:6px;">
-      <span>🤖 AI 策略健康度診斷</span>
-      <span id="aiScoreTag" style="background:var(--accent-gold); color:#000; padding:1px 6px; border-radius:4px;">評級: A</span>
-    </div>
-    <div id="aiReportText" style="font-size:12px; color:#d9d9d9; line-height:1.5;"></div>
+  <!-- 實質優化：持有心理與套牢成本面板 -->
+  <div id="painCard" class="pain-card">
+    <div style="font-weight:bold; color:#ff7875; margin-bottom:6px;">🧠 投資心理與套牢天數分析</div>
+    <div id="painReportText" style="color:#d9d9d9; line-height:1.5;"></div>
   </div>
 
   <div id="reportBox" class="report-box">
-    <div style="font-size: 11px; color: var(--text-sub); margin-bottom: 4px;">Yahoo 真實報酬走勢 (已扣除交易成本)</div>
+    <div style="font-size: 11px; color: var(--text-sub); margin-bottom: 4px;">K線走勢與買賣訊號點標註 (🔴買進 / 🟢賣出)</div>
     <div class="chart-container">
       <canvas id="returnChart"></canvas>
     </div>
@@ -174,11 +170,12 @@
       <tr><td>最大連續獲利率</td><td id="resMaxSeqWin" style="color:var(--accent-red);">0.00%</td></tr>
       <tr><td>最大虧損率</td><td id="resMaxLoss" style="color:var(--accent-green);">0.00%</td></tr>
       <tr><td>最大連續虧損率</td><td id="resMaxSeqLoss" style="color:var(--accent-green);">0.00%</td></tr>
+      <tr style="border-top:1px dashed var(--accent-blue);"><td>可買張數 (以100萬算)</td><td id="resShares" style="color:var(--accent-gold);">0 張</td></tr>
     </table>
   </div>
 
   <div class="stock-list">
-    <div style="font-size: 12px; color: var(--text-sub); margin-bottom: 6px;">符合策略個股 (點擊名稱下單 / 點擊價格看行情):</div>
+    <div style="font-size: 12px; color: var(--text-sub); margin-bottom: 6px;">符合策略個股 (點擊名稱帶入智慧單下單):</div>
     <div id="stockRows"></div>
   </div>
 </div>
