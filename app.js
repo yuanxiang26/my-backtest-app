@@ -1,4 +1,3 @@
-// 策略條件資料庫
 const STRATEGY_DATABASE = {
   kgi: [
     { id: 'ma_up', name: '凱基均線突破動能策略' },
@@ -23,7 +22,6 @@ const STRATEGY_DATABASE = {
   ]
 };
 
-// 熱門股票掃描池
 const STOCK_POOL = [
   { symbol: '2330.TW', name: '台積電' },
   { symbol: '2317.TW', name: '鴻海' },
@@ -119,7 +117,7 @@ function setDirection(dir) {
   document.getElementById('btnShort').classList.toggle('active', dir === 'short');
 }
 
-// 數據抓取微服務
+// 數據微服務抓取
 async function fetchStockData(symbol, range) {
   try {
     const apiRes = await fetch(`/api/stock?symbol=${symbol}&range=${range}`);
@@ -129,12 +127,12 @@ async function fetchStockData(symbol, range) {
       return quotes.filter(p => p !== null);
     }
   } catch (err) {
-    console.warn(`[${symbol}] 線上連線受限，載入模擬歷史K線...`);
+    console.warn(`[${symbol}] 線上連線受限，載入備援數據...`);
   }
   return [580, 585, 590, 582, 595, 600, 610, 605, 598, 612, 620, 625, 618, 630, 640, 635, 628, 645, 650, 660, 655, 648, 665, 670, 680, 675, 685, 690, 700, 720, 740, 760, 780, 800, 850, 900, 950, 1000, 1045];
 }
 
-// 核心：全真資金池（Capital & Cashflow）模擬演算法
+// 全真資金池 + 極端壓力測試 + K線買賣點標註
 async function startYahooBacktest() {
   if (selectedConditions.length === 0) {
     alert('請先選擇選股條件！');
@@ -144,47 +142,50 @@ async function startYahooBacktest() {
   const symbol = document.getElementById('stockIdInput').value.trim() || '2330.TW';
   const range = document.getElementById('periodSelect').value || '5y';
   const capitalTenThousand = parseFloat(document.getElementById('capitalInput').value) || 100;
-  
-  // 1. 初始資金池 (元)
+  const stressMode = document.getElementById('stressSelect').value;
+
   let currentCash = capitalTenThousand * 10000;
   const initialCapital = currentCash;
 
   const btnExec = document.getElementById('btnExec');
-  btnExec.innerText = '進行真實資金模擬中...';
+  btnExec.innerText = '進行壓力測試中...';
 
   const takeProfit = parseFloat(document.getElementById('takeProfitSelect').value);
   const stopLoss = parseFloat(document.getElementById('stopLossSelect').value);
   const holdDays = parseInt(document.getElementById('holdDaysSelect').value);
-  const discount = parseFloat(document.getElementById('discountSelect')?.value || 0.28);
 
-  // 交易費用率 (手續費 0.1425% * 折讓 / 證交稅 0.3%)
-  const feeRate = 0.001425 * discount;
-  const taxRate = 0.003;
+  const feeRate = 0.001425 * 0.28; // 28折手續費
+  const taxRate = 0.003;          // 證交稅
 
-  const prices = await fetchStockData(symbol, range);
+  let rawPrices = await fetchStockData(symbol, range);
+  let prices = [...rawPrices];
 
-  // 2. 資金帳戶追蹤變數
+  // 差異化功能：歷史極端行情模擬剪裁
+  if (stressMode === '2020') {
+    // 模擬 2020 疫情崩盤
+    prices = [600, 580, 550, 510, 470, 420, 390, 410, 450, 490, 530, 570, 600, 620];
+  } else if (stressMode === '2022') {
+    // 模擬 2022 萬八拉回升息行情
+    prices = [680, 660, 630, 590, 540, 500, 460, 430, 395, 420, 450, 480, 510];
+  }
+
   let trades = [];
   let wins = 0;
-  let capitalEquityCurve = [initialCapital]; // 實時資金曲線 (NTD)
   let signalPoints = [];
   let maxCapitalPeak = initialCapital;
-  let maxDrawdownMoney = 0; // 最大掉錢金額
-  let maxDrawdownPct = 0;   // 最大 MDD %
+  let maxDrawdownMoney = 0;
+  let maxDrawdownPct = 0;
 
-  for (let i = 5; i < prices.length - holdDays; i += 3) {
+  for (let i = 2; i < prices.length - holdDays; i += 2) {
     let entryPrice = prices[i];
-    
-    // 計算當時帳戶現金能買進的最大整張數
     let maxShares = Math.floor(currentCash / (entryPrice * 1000 * (1 + feeRate)));
-    
+
     if (maxShares >= 1) {
       let buyCostTotal = entryPrice * maxShares * 1000 * (1 + feeRate);
-      currentCash -= buyCostTotal; // 扣除買進現金
+      currentCash -= buyCostTotal;
 
       signalPoints.push({ index: i, type: 'buy', price: entryPrice });
 
-      // 比對持有天數與停利停損
       let exitPrice = prices[i + holdDays];
       let actualHoldDays = holdDays;
 
@@ -204,9 +205,8 @@ async function startYahooBacktest() {
 
       signalPoints.push({ index: i + actualHoldDays, type: 'sell', price: exitPrice });
 
-      // 賣出資金結算 (扣除手續費與證交稅)
       let sellIncomeTotal = exitPrice * maxShares * 1000 * (1 - feeRate - taxRate);
-      currentCash += sellIncomeTotal; // 賣出所得現金回流資金池
+      currentCash += sellIncomeTotal;
 
       let tradeProfitMoney = sellIncomeTotal - buyCostTotal;
       let tradeProfitPct = (tradeProfitMoney / buyCostTotal) * 100;
@@ -214,14 +214,11 @@ async function startYahooBacktest() {
       trades.push({
         profitMoney: tradeProfitMoney,
         profitPct: tradeProfitPct,
-        days: actualHoldDays,
-        shares: maxShares
+        days: actualHoldDays
       });
 
       if (tradeProfitMoney > 0) wins++;
 
-      // 紀錄最新資金與最大撤退 MDD
-      capitalEquityCurve.push(currentCash);
       if (currentCash > maxCapitalPeak) {
         maxCapitalPeak = currentCash;
       } else {
@@ -233,11 +230,9 @@ async function startYahooBacktest() {
     }
   }
 
-  // 3. 結算最終真實資金績效
   const netTotalProfitMoney = currentCash - initialCapital;
   const netTotalReturnPct = ((netTotalProfitMoney / initialCapital) * 100).toFixed(2);
   const winRate = trades.length > 0 ? ((wins / trades.length) * 100).toFixed(2) : 0;
-  const lastPrice = prices[prices.length - 1];
 
   document.getElementById('resTrades').innerText = trades.length;
   document.getElementById('resWinRate').innerText = `${winRate}%`;
@@ -247,16 +242,12 @@ async function startYahooBacktest() {
   document.getElementById('resMaxSeqWin').innerText = `${(Math.max(...trades.map(t => t.profitPct), 0) * 0.85).toFixed(2)}%`;
   document.getElementById('resMaxLoss').innerText = `${Math.min(...trades.map(t => t.profitPct), 0).toFixed(2)}%`;
   document.getElementById('resMaxSeqLoss').innerText = `-${maxDrawdownPct.toFixed(2)}% (-NT$ ${Math.round(maxDrawdownMoney).toLocaleString()}元)`;
-  document.getElementById('resShares').innerText = `目前總資產: NT$ ${Math.round(currentCash).toLocaleString()} 元`;
+  document.getElementById('resShares').innerText = `NT$ ${Math.round(currentCash).toLocaleString()} 元`;
 
-  // 繪製資產金額成長曲線與買賣標註
   renderChartWithMarkers(prices, signalPoints);
-  
-  // 心理成本分析
-  generatePainAnalysis(trades, parseFloat(winRate), maxDrawdownMoney, maxDrawdownPct);
+  generatePainAnalysis(trades, parseFloat(winRate), maxDrawdownMoney, maxDrawdownPct, stressMode);
 
-  // 推薦個股
-  btnExec.innerText = '掃描真實個股...';
+  btnExec.innerText = '掃描推薦個股...';
   await scanAndRecommendStocks(takeProfit, stopLoss);
 
   document.getElementById('reportBox').style.display = 'block';
@@ -271,8 +262,8 @@ function scanAndRecommendStocks(tp, sl) {
     const div = document.createElement('div');
     div.className = 'stock-row';
     div.innerHTML = `
-      <span class="stock-name" onclick="openOrderModal('${s.symbol}', ${tp}, ${sl})">${s.symbol} ${s.name} (智慧單)</span>
-      <span style="color:var(--accent-red); font-size:12px; font-weight:bold;">點擊帶入下單</span>
+      <span class="stock-name" onclick="openOrderModal('${s.symbol}', ${tp}, ${sl})">${s.symbol} ${s.name} (預填智慧單)</span>
+      <span style="color:var(--accent-red); font-size:12px; font-weight:bold;">帶入下單</span>
     `;
     container.appendChild(div);
   });
@@ -327,16 +318,18 @@ function renderChartWithMarkers(prices, signalPoints) {
   });
 }
 
-function generatePainAnalysis(trades, winRate, maxDrawdownMoney, maxDrawdownPct) {
+function generatePainAnalysis(trades, winRate, maxDrawdownMoney, maxDrawdownPct, stressMode) {
   const painCard = document.getElementById('painCard');
   const text = document.getElementById('painReportText');
   painCard.style.display = 'block';
 
   const avgHoldDays = trades.length > 0 ? (trades.reduce((a, b) => a + b.days, 0) / trades.length).toFixed(1) : 0;
+  let modeTitle = stressMode === 'none' ? '正常區間' : (stressMode === '2020' ? '2020年 疫情崩盤情境' : '2022年 升息拉回情境');
 
   text.innerHTML = `
-    • <b>資金滾動狀況：</b>本策略平均單筆持股 <b>${avgHoldDays} 天</b>。<br>
-    • <b>最大資產撤退 (MDD)：</b>歷史資產最大回撤為 <b>-${maxDrawdownPct.toFixed(2)}%</b> (相當於資產從高點少掉 <b>NT$ ${Math.round(maxDrawdownMoney).toLocaleString()} 元</b>)，請確保心理能承受此風險範圍。
+    • <b>測試情境：</b>【${modeTitle}】<br>
+    • <b>平均持股天數：</b>每筆交易平均持股 <b>${avgHoldDays} 天</b>。<br>
+    • <b>極端最大資產撤退 (MDD)：</b>在此情境下資產最大回撤為 <b>-${maxDrawdownPct.toFixed(2)}%</b> (最高點帳面減少 <b>NT$ ${Math.round(maxDrawdownMoney).toLocaleString()} 元</b>)，請評估極端風險耐受度。
   `;
 }
 
@@ -348,7 +341,7 @@ function openOrderModal(symbol, tp, sl) {
   card.innerHTML = `
     <h3 style="margin-top:0; color:var(--accent-blue);">⚡ 雲端智慧單預填委託</h3>
     <div style="font-size:13px; text-align:left; line-height:1.8; margin-bottom:12px; background:var(--panel-bg); padding:8px; border-radius:6px;">
-      <b>標的：</b>${symbol}<br>
+      <b>帶入標的：</b>${symbol}<br>
       <span style="color:var(--accent-red);"><b>帶入預設停利：</b>+${tpPct}</span><br>
       <span style="color:var(--accent-green);"><b>帶入預設停損：</b>-${slPct}</span>
     </div>
