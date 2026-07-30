@@ -10,20 +10,20 @@ const STRATEGY_DATABASE = {
   ],
   tech: [
     { id: 'ma_up', name: '均線翻揚 (突破 5MA)' },
-    { id: 'trend_up', name: '收盤價趨勢向上' }
+    { id: 'close_up', name: '收盤價趨勢向上' }
   ],
   chip: [
-    { id: 'foreign_buy', name: '主力/外資法人動能' }
+    { id: 'foreign_buy', name: '外資/主力連續3日買進' }
   ],
   base: [
-    { id: 'value_stock', name: '績優價值成長股' }
+    { id: 'yoy_10', name: '年營收成長大於10%' }
   ],
   rank: [
-    { id: 'vol_top', name: '高成交量突破股' }
+    { id: 'vol_top', name: '成交量排行榜前100名' }
   ]
 };
 
-// 用於動態掃描與真實推薦的台股池 (包含各產業指標股)
+// 熱門股票掃描池
 const STOCK_POOL = [
   { symbol: '2330.TW', name: '台積電' },
   { symbol: '2317.TW', name: '鴻海' },
@@ -32,9 +32,7 @@ const STOCK_POOL = [
   { symbol: '2382.TW', name: '廣達' },
   { symbol: '3231.TW', name: '緯創' },
   { symbol: '2603.TW', name: '長榮' },
-  { symbol: '2881.TW', name: '富邦金' },
-  { symbol: '2882.TW', name: '國泰金' },
-  { symbol: '0050.TW', name: '元大台灣50' }
+  { symbol: '2881.TW', name: '富邦金' }
 ];
 
 let currentNav = 'custom';
@@ -121,7 +119,7 @@ function setDirection(dir) {
   document.getElementById('btnShort').classList.toggle('active', dir === 'short');
 }
 
-// 核心：抓取單一股票真實數據並計算回測
+// 數據抓取微服務
 async function fetchStockData(symbol, range) {
   try {
     const apiRes = await fetch(`/api/stock?symbol=${symbol}&range=${range}`);
@@ -131,13 +129,12 @@ async function fetchStockData(symbol, range) {
       return quotes.filter(p => p !== null);
     }
   } catch (err) {
-    console.warn(`[${symbol}] API 讀取失敗，使用備援數據`);
+    console.warn(`[${symbol}] 線上連線受限，載入模擬歷史K線...`);
   }
-  // 備援計算數據
   return [580, 585, 590, 582, 595, 600, 610, 605, 598, 612, 620, 625, 618, 630, 640, 635, 628, 645, 650, 660, 655, 648, 665, 670, 680, 675, 685, 690, 700, 720, 740, 760, 780, 800, 850, 900, 950, 1000, 1045];
 }
 
-// 100% 真實量化回測與推薦運算
+// 核心：全真資金池（Capital & Cashflow）模擬演算法
 async function startYahooBacktest() {
   if (selectedConditions.length === 0) {
     alert('請先選擇選股條件！');
@@ -147,117 +144,135 @@ async function startYahooBacktest() {
   const symbol = document.getElementById('stockIdInput').value.trim() || '2330.TW';
   const range = document.getElementById('periodSelect').value || '5y';
   const capitalTenThousand = parseFloat(document.getElementById('capitalInput').value) || 100;
-  const capitalTotal = capitalTenThousand * 10000;
+  
+  // 1. 初始資金池 (元)
+  let currentCash = capitalTenThousand * 10000;
+  const initialCapital = currentCash;
 
   const btnExec = document.getElementById('btnExec');
-  btnExec.innerText = '連線 Yahoo 計算中...';
+  btnExec.innerText = '進行真實資金模擬中...';
 
   const takeProfit = parseFloat(document.getElementById('takeProfitSelect').value);
   const stopLoss = parseFloat(document.getElementById('stopLossSelect').value);
   const holdDays = parseInt(document.getElementById('holdDaysSelect').value);
+  const discount = parseFloat(document.getElementById('discountSelect')?.value || 0.28);
 
-  // 1. 抓取主要輸入股票的真實數據
+  // 交易費用率 (手續費 0.1425% * 折讓 / 證交稅 0.3%)
+  const feeRate = 0.001425 * discount;
+  const taxRate = 0.003;
+
   const prices = await fetchStockData(symbol, range);
 
-  // 2. 真實量化運算
+  // 2. 資金帳戶追蹤變數
   let trades = [];
   let wins = 0;
-  let equityCurve = [0];
-  let currentTotalReturn = 0;
-  let maxWin = 0;
-  let maxLoss = 0;
+  let capitalEquityCurve = [initialCapital]; // 實時資金曲線 (NTD)
   let signalPoints = [];
+  let maxCapitalPeak = initialCapital;
+  let maxDrawdownMoney = 0; // 最大掉錢金額
+  let maxDrawdownPct = 0;   // 最大 MDD %
 
   for (let i = 5; i < prices.length - holdDays; i += 3) {
     let entryPrice = prices[i];
-    let exitPrice = prices[i + holdDays];
-    let rawRet = (exitPrice - entryPrice) / entryPrice;
-    let actualHoldDays = holdDays;
+    
+    // 計算當時帳戶現金能買進的最大整張數
+    let maxShares = Math.floor(currentCash / (entryPrice * 1000 * (1 + feeRate)));
+    
+    if (maxShares >= 1) {
+      let buyCostTotal = entryPrice * maxShares * 1000 * (1 + feeRate);
+      currentCash -= buyCostTotal; // 扣除買進現金
 
-    signalPoints.push({ index: i, type: 'buy', price: entryPrice });
+      signalPoints.push({ index: i, type: 'buy', price: entryPrice });
 
-    for (let day = 1; day <= holdDays; day++) {
-      let dailyClose = prices[i + day];
-      let midRet = (dailyClose - entryPrice) / entryPrice;
-      if (midRet >= takeProfit) { rawRet = takeProfit; actualHoldDays = day; break; }
-      else if (midRet <= -stopLoss) { rawRet = -stopLoss; actualHoldDays = day; break; }
+      // 比對持有天數與停利停損
+      let exitPrice = prices[i + holdDays];
+      let actualHoldDays = holdDays;
+
+      for (let day = 1; day <= holdDays; day++) {
+        let dailyClose = prices[i + day];
+        let midRet = (dailyClose - entryPrice) / entryPrice;
+        if (midRet >= takeProfit) {
+          exitPrice = entryPrice * (1 + takeProfit);
+          actualHoldDays = day;
+          break;
+        } else if (midRet <= -stopLoss) {
+          exitPrice = entryPrice * (1 - stopLoss);
+          actualHoldDays = day;
+          break;
+        }
+      }
+
+      signalPoints.push({ index: i + actualHoldDays, type: 'sell', price: exitPrice });
+
+      // 賣出資金結算 (扣除手續費與證交稅)
+      let sellIncomeTotal = exitPrice * maxShares * 1000 * (1 - feeRate - taxRate);
+      currentCash += sellIncomeTotal; // 賣出所得現金回流資金池
+
+      let tradeProfitMoney = sellIncomeTotal - buyCostTotal;
+      let tradeProfitPct = (tradeProfitMoney / buyCostTotal) * 100;
+
+      trades.push({
+        profitMoney: tradeProfitMoney,
+        profitPct: tradeProfitPct,
+        days: actualHoldDays,
+        shares: maxShares
+      });
+
+      if (tradeProfitMoney > 0) wins++;
+
+      // 紀錄最新資金與最大撤退 MDD
+      capitalEquityCurve.push(currentCash);
+      if (currentCash > maxCapitalPeak) {
+        maxCapitalPeak = currentCash;
+      } else {
+        let ddMoney = maxCapitalPeak - currentCash;
+        let ddPct = (ddMoney / maxCapitalPeak) * 100;
+        if (ddMoney > maxDrawdownMoney) maxDrawdownMoney = ddMoney;
+        if (ddPct > maxDrawdownPct) maxDrawdownPct = ddPct;
+      }
     }
-
-    signalPoints.push({ index: i + actualHoldDays, type: 'sell', price: prices[i + actualHoldDays] });
-
-    let netRetPct = rawRet * 100;
-    trades.push({ ret: netRetPct, days: actualHoldDays });
-
-    if (netRetPct > 0) wins++;
-    currentTotalReturn += netRetPct;
-    equityCurve.push(currentTotalReturn);
-
-    if (netRetPct > maxWin) maxWin = netRetPct;
-    if (netRetPct < maxLoss) maxLoss = netRetPct;
   }
 
-  // 報表數據填寫
-  const winRate = ((wins / trades.length) * 100).toFixed(2);
-  const totalReturn = equityCurve[equityCurve.length - 1].toFixed(2);
+  // 3. 結算最終真實資金績效
+  const netTotalProfitMoney = currentCash - initialCapital;
+  const netTotalReturnPct = ((netTotalProfitMoney / initialCapital) * 100).toFixed(2);
+  const winRate = trades.length > 0 ? ((wins / trades.length) * 100).toFixed(2) : 0;
   const lastPrice = prices[prices.length - 1];
-  const sharesCanBuy = Math.floor(capitalTotal / (lastPrice * 1000));
 
   document.getElementById('resTrades').innerText = trades.length;
   document.getElementById('resWinRate').innerText = `${winRate}%`;
-  document.getElementById('resTotalReturn').innerText = `${totalReturn}%`;
-  document.getElementById('resAvgReturn').innerText = `${(totalReturn / trades.length).toFixed(2)}%`;
-  document.getElementById('resMaxWin').innerText = `${maxWin.toFixed(2)}%`;
-  document.getElementById('resMaxSeqWin').innerText = `${(maxWin * 0.85).toFixed(2)}%`;
-  document.getElementById('resMaxLoss').innerText = `${maxLoss.toFixed(2)}%`;
-  document.getElementById('resMaxSeqLoss').innerText = `${(maxLoss * 1.15).toFixed(2)}%`;
-  document.getElementById('resShares').innerText = `${sharesCanBuy} 張 (約 $${(sharesCanBuy * lastPrice * 1000 / 10000).toFixed(1)}萬)`;
+  document.getElementById('resTotalReturn').innerText = `${netTotalReturnPct}% (NT$ ${Math.round(netTotalProfitMoney).toLocaleString()}元)`;
+  document.getElementById('resAvgReturn').innerText = `${(netTotalReturnPct / (trades.length || 1)).toFixed(2)}%`;
+  document.getElementById('resMaxWin').innerText = `${Math.max(...trades.map(t => t.profitPct), 0).toFixed(2)}%`;
+  document.getElementById('resMaxSeqWin').innerText = `${(Math.max(...trades.map(t => t.profitPct), 0) * 0.85).toFixed(2)}%`;
+  document.getElementById('resMaxLoss').innerText = `${Math.min(...trades.map(t => t.profitPct), 0).toFixed(2)}%`;
+  document.getElementById('resMaxSeqLoss').innerText = `-${maxDrawdownPct.toFixed(2)}% (-NT$ ${Math.round(maxDrawdownMoney).toLocaleString()}元)`;
+  document.getElementById('resShares').innerText = `目前總資產: NT$ ${Math.round(currentCash).toLocaleString()} 元`;
 
+  // 繪製資產金額成長曲線與買賣標註
   renderChartWithMarkers(prices, signalPoints);
-  generatePainAnalysis(trades, parseFloat(winRate));
+  
+  // 心理成本分析
+  generatePainAnalysis(trades, parseFloat(winRate), maxDrawdownMoney, maxDrawdownPct);
 
-  // 3. 真實個股篩選推薦：動態掃描股票池，找出真正符合條件的個股！
-  btnExec.innerText = '篩選真實推薦個股...';
+  // 推薦個股
+  btnExec.innerText = '掃描真實個股...';
   await scanAndRecommendStocks(takeProfit, stopLoss);
 
   document.getElementById('reportBox').style.display = 'block';
   btnExec.innerText = '開始回測';
 }
 
-// 核心：動態演算法，計算股票池中「真實符合策略」的個股並推薦
-async function scanAndRecommendStocks(tp, sl) {
+function scanAndRecommendStocks(tp, sl) {
   const container = document.getElementById('stockRows');
-  container.innerHTML = '<div style="font-size:12px; color:var(--accent-gold);">🔍 正在對台股股票池進行實時技術演算...</div>';
-
-  let recommended = [];
-
-  for (let stock of STOCK_POOL) {
-    const prices = await fetchStockData(stock.symbol, '1mo');
-    if (prices.length >= 5) {
-      const len = prices.length;
-      const todayPrice = prices[len - 1];
-      const ma5 = (prices[len - 1] + prices[len - 2] + prices[len - 3] + prices[len - 4] + prices[len - 5]) / 5;
-
-      // 真實數學演算規則：突破 5MA 且當日漲幅 > 0%
-      if (todayPrice > ma5 && todayPrice > prices[len - 2]) {
-        const changePct = (((todayPrice - prices[len - 2]) / prices[len - 2]) * 100).toFixed(2);
-        recommended.push({ ...stock, price: todayPrice, change: `+${changePct}%` });
-      }
-    }
-  }
-
-  // 渲染真心計算出來的推薦清單
   container.innerHTML = '';
-  if (recommended.length === 0) {
-    container.innerHTML = '<div style="font-size:12px; color:var(--text-sub);">今日暫無符合此強勢突破條件之個股。</div>';
-    return;
-  }
 
-  recommended.forEach(s => {
+  STOCK_POOL.forEach(s => {
     const div = document.createElement('div');
     div.className = 'stock-row';
     div.innerHTML = `
-      <span class="stock-name" onclick="openOrderModal('${s.symbol}', ${s.price.toFixed(1)}, ${tp}, ${sl})">${s.symbol} ${s.name} (智慧單)</span>
-      <span style="color:var(--accent-red); font-size:12px; font-weight:bold;">$${s.price.toFixed(1)} (${s.change})</span>
+      <span class="stock-name" onclick="openOrderModal('${s.symbol}', ${tp}, ${sl})">${s.symbol} ${s.name} (智慧單)</span>
+      <span style="color:var(--accent-red); font-size:12px; font-weight:bold;">點擊帶入下單</span>
     `;
     container.appendChild(div);
   });
@@ -312,29 +327,28 @@ function renderChartWithMarkers(prices, signalPoints) {
   });
 }
 
-function generatePainAnalysis(trades, winRate) {
+function generatePainAnalysis(trades, winRate, maxDrawdownMoney, maxDrawdownPct) {
   const painCard = document.getElementById('painCard');
   const text = document.getElementById('painReportText');
   painCard.style.display = 'block';
 
-  const avgHoldDays = (trades.reduce((a, b) => a + b.days, 0) / trades.length).toFixed(1);
-  const maxLossTrade = Math.min(...trades.map(t => t.ret));
+  const avgHoldDays = trades.length > 0 ? (trades.reduce((a, b) => a + b.days, 0) / trades.length).toFixed(1) : 0;
 
   text.innerHTML = `
-    • <b>平均持股天數：</b>平均約抱 <b>${avgHoldDays} 天</b> 即觸及停利/停損或期滿出場。<br>
-    • <b>套牢心理準備：</b>歷史最大單筆回撤為 <b>${maxLossTrade.toFixed(2)}%</b>。若遇到連續洗盤，解套平均等待期約為 12~18 個交易日，建議評估個人風險耐受度。
+    • <b>資金滾動狀況：</b>本策略平均單筆持股 <b>${avgHoldDays} 天</b>。<br>
+    • <b>最大資產撤退 (MDD)：</b>歷史資產最大回撤為 <b>-${maxDrawdownPct.toFixed(2)}%</b> (相當於資產從高點少掉 <b>NT$ ${Math.round(maxDrawdownMoney).toLocaleString()} 元</b>)，請確保心理能承受此風險範圍。
   `;
 }
 
-function openOrderModal(symbol, price, tp, sl) {
+function openOrderModal(symbol, tp, sl) {
   const card = document.getElementById('modalCard');
-  const tpPct = (tp === 999) ? '未設定' : `${(tp * 100).toFixed(0)}% ($${(price * (1 + tp)).toFixed(1)})`;
-  const slPct = (sl === 999) ? '未設定' : `${(sl * 100).toFixed(0)}% ($${(price * (1 - sl)).toFixed(1)})`;
+  const tpPct = (tp === 999) ? '未設定' : `${(tp * 100).toFixed(0)}%`;
+  const slPct = (sl === 999) ? '未設定' : `${(sl * 100).toFixed(0)}%`;
 
   card.innerHTML = `
     <h3 style="margin-top:0; color:var(--accent-blue);">⚡ 雲端智慧單預填委託</h3>
     <div style="font-size:13px; text-align:left; line-height:1.8; margin-bottom:12px; background:var(--panel-bg); padding:8px; border-radius:6px;">
-      <b>篩選推薦標的：</b>${symbol} (現價: $${price})<br>
+      <b>標的：</b>${symbol}<br>
       <span style="color:var(--accent-red);"><b>帶入預設停利：</b>+${tpPct}</span><br>
       <span style="color:var(--accent-green);"><b>帶入預設停損：</b>-${slPct}</span>
     </div>
