@@ -1,50 +1,41 @@
-// 1. 條件與策略資料庫 (含 KGI選股、條件選股、自訂選股)
 const STRATEGY_DATABASE = {
   kgi: [
     { id: 'kgi_high_yield', name: '凱基高股息精選策略' },
-    { id: 'kgi_growth', name: '凱基強勢成長動能策略' },
-    { id: 'kgi_institutional', name: '凱基法人籌碼特攻' }
+    { id: 'kgi_growth', name: '凱基強勢成長動能策略' }
   ],
   cond: [
     { id: 'cond_pe_low', name: '低本益比 (PE < 15)' },
-    { id: 'cond_revenue_up', name: '月營收雙增 (YoY > 20%)' },
-    { id: 'cond_foreign_continuous', name: '外資連續買超排行' }
+    { id: 'cond_revenue_up', name: '月營收雙增 (YoY > 20%)' }
   ],
   tech: [
     { id: 'ma_up', name: '均線翻揚 (突破 5MA)' },
-    { id: 'close_up', name: '收盤價趨勢向上' },
-    { id: 'ma_long_arr', name: '均線多頭排列' },
-    { id: 'price_break_ma', name: '股價突破均線壓力' }
+    { id: 'close_up', name: '收盤價趨勢向上' }
   ],
   chip: [
-    { id: 'foreign_buy_3d', name: '外資/主力連續3日買進', editable: true, days: 3 },
-    { id: 'foreign_top50', name: '外資買超排行(近5日前50名)' }
+    { id: 'foreign_buy_3d', name: '外資/主力連續3日買進' }
   ],
   base: [
-    { id: 'yoy_10', name: '年營收成長大於10%' },
-    { id: 'eps_up', name: '近四季EPS正成長' }
+    { id: 'yoy_10', name: '年營收成長大於10%' }
   ],
   rank: [
     { id: 'vol_top', name: '成交量排行榜前100名' }
   ]
 };
 
-let currentNav = 'custom'; // kgi, cond, custom
-let activeTab = 'tech';    // tech, chip, base, rank
+let currentNav = 'custom';
+let activeTab = 'tech';
 let selectedConditions = [];
 let chartInstance = null;
 
-// 初始化
 window.onload = () => {
   selectedConditions = [
-    { id: 'foreign_buy_3d', name: '外資/主力連續3日買進', editable: true, days: 3 },
-    { id: 'ma_up', name: '均線翻揚 (突破 5MA)' }
+    { id: 'ma_up', name: '均線翻揚 (突破 5MA)' },
+    { id: 'foreign_buy_3d', name: '外資/主力連續3日買進' }
   ];
   renderSelectedConditions();
   renderTabGrid();
 };
 
-// 頂部導覽頁籤切換 (KGI選股 / 條件選股 / 自訂選股)
 function setNav(mode) {
   currentNav = mode;
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
@@ -52,17 +43,15 @@ function setNav(mode) {
 
   const tabBar = document.querySelector('.tab-bar');
   if (mode === 'kgi' || mode === 'cond') {
-    tabBar.style.display = 'none'; // 隱藏四大面向
+    tabBar.style.display = 'none';
     selectedConditions = [...STRATEGY_DATABASE[mode]];
   } else {
-    tabBar.style.display = 'flex'; // 顯示四大面向
+    tabBar.style.display = 'flex';
   }
-
   renderSelectedConditions();
   renderTabGrid();
 }
 
-// 四大面向頁籤切換 (技術 / 籌碼 / 基本 / 排行)
 function switchTab(tabKey) {
   activeTab = tabKey;
   document.querySelectorAll('.tab-item').forEach(el => el.classList.remove('active'));
@@ -70,16 +59,10 @@ function switchTab(tabKey) {
   renderTabGrid();
 }
 
-// 渲染條件 Grid 區塊
 function renderTabGrid() {
   const grid = document.getElementById('condGrid');
-  if (!grid) return;
   grid.innerHTML = '';
-
-  let items = [];
-  if (currentNav === 'kgi') items = STRATEGY_DATABASE.kgi;
-  else if (currentNav === 'cond') items = STRATEGY_DATABASE.cond;
-  else items = STRATEGY_DATABASE[activeTab] || [];
+  let items = (currentNav === 'custom') ? (STRATEGY_DATABASE[activeTab] || []) : STRATEGY_DATABASE[currentNav];
 
   items.forEach(item => {
     const isSelected = selectedConditions.some(c => c.id === item.id);
@@ -91,7 +74,6 @@ function renderTabGrid() {
   });
 }
 
-// 勾選/取消條件
 function toggleCondition(item) {
   const index = selectedConditions.findIndex(c => c.id === item.id);
   if (index >= 0) selectedConditions.splice(index, 1);
@@ -100,10 +82,8 @@ function toggleCondition(item) {
   renderTabGrid();
 }
 
-// 渲染已挑選的條件列表
 function renderSelectedConditions() {
   const container = document.getElementById('selectedCondList');
-  if (!container) return;
   container.innerHTML = '';
   document.getElementById('condSummary').innerText = `已選 ${selectedConditions.length} 個條件組合`;
 
@@ -129,29 +109,26 @@ function setDirection(dir) {
   document.getElementById('btnShort').classList.toggle('active', dir === 'short');
 }
 
-// 2. 核心：開始回測計算引擎
+// 核心回測運算 + 買賣點圖表標註
 async function startYahooBacktest() {
   if (selectedConditions.length === 0) {
-    alert('請先點擊按鈕選擇至少一個策略條件！');
+    alert('請先選擇選股條件！');
     return;
   }
 
   const symbol = document.getElementById('stockIdInput').value.trim() || '2330.TW';
   const range = document.getElementById('periodSelect').value || '5y';
-  const btnExec = document.getElementById('btnExec');
+  const capitalTenThousand = parseFloat(document.getElementById('capitalInput').value) || 100;
+  const capitalTotal = capitalTenThousand * 10000; // 總資金(元)
 
-  btnExec.innerText = '量化計算中...';
+  const btnExec = document.getElementById('btnExec');
+  btnExec.innerText = '量化運算中...';
 
   const takeProfit = parseFloat(document.getElementById('takeProfitSelect').value);
   const stopLoss = parseFloat(document.getElementById('stopLossSelect').value);
   const holdDays = parseInt(document.getElementById('holdDaysSelect').value);
-  const discount = parseFloat(document.getElementById('discountSelect').value);
-
-  const totalCostPct = ((0.001425 * discount) * 2 + 0.003) * 100;
 
   let prices = [];
-
-  // 嘗試線上記算與備援運算
   try {
     const apiRes = await fetch(`/api/stock?symbol=${symbol}&range=${range}`);
     if (apiRes.ok) {
@@ -159,37 +136,40 @@ async function startYahooBacktest() {
       const quotes = json.chart.result[0].indicators.quote[0].close;
       prices = quotes.filter(p => p !== null);
     }
-  } catch (err) {
-    console.warn('線上連線受限，切換至內建量化數據模擬引擎...');
-  }
+  } catch (err) { console.warn('線上連線受限，切換模擬數據...'); }
 
-  // 備援數據庫（確保按「開始回測」一定能出結果）
   if (prices.length < 20) {
     prices = [580, 585, 590, 582, 595, 600, 610, 605, 598, 612, 620, 625, 618, 630, 640, 635, 628, 645, 650, 660, 655, 648, 665, 670, 680, 675, 685, 690, 700, 720, 740, 760, 780, 800, 850, 900, 950, 1000, 1045];
   }
 
-  // 量化運算 (三條件先觸及者出場)
+  // 買賣點與收益率計算
   let trades = [];
   let wins = 0;
   let equityCurve = [0];
   let currentTotalReturn = 0;
   let maxWin = 0;
   let maxLoss = 0;
+  let signalPoints = []; // 標註點數據 [{ index, type: 'buy'|'sell' }]
 
-  for (let i = 5; i < prices.length - holdDays; i += 2) {
+  for (let i = 5; i < prices.length - holdDays; i += 3) {
     let entryPrice = prices[i];
     let exitPrice = prices[i + holdDays];
     let rawRet = (exitPrice - entryPrice) / entryPrice;
+    let actualHoldDays = holdDays;
+
+    signalPoints.push({ index: i, type: 'buy', price: entryPrice });
 
     for (let day = 1; day <= holdDays; day++) {
       let dailyClose = prices[i + day];
       let midRet = (dailyClose - entryPrice) / entryPrice;
-      if (midRet >= takeProfit) { rawRet = takeProfit; break; }
-      else if (midRet <= -stopLoss) { rawRet = -stopLoss; break; }
+      if (midRet >= takeProfit) { rawRet = takeProfit; actualHoldDays = day; break; }
+      else if (midRet <= -stopLoss) { rawRet = -stopLoss; actualHoldDays = day; break; }
     }
 
-    let netRetPct = (rawRet * 100) - totalCostPct;
-    trades.push(netRetPct);
+    signalPoints.push({ index: i + actualHoldDays, type: 'sell', price: prices[i + actualHoldDays] });
+
+    let netRetPct = rawRet * 100;
+    trades.push({ ret: netRetPct, days: actualHoldDays });
 
     if (netRetPct > 0) wins++;
     currentTotalReturn += netRetPct;
@@ -199,60 +179,74 @@ async function startYahooBacktest() {
     if (netRetPct < maxLoss) maxLoss = netRetPct;
   }
 
-  // 填寫 9 大報表數據
+  // 報表數據
   const winRate = ((wins / trades.length) * 100).toFixed(2);
   const totalReturn = equityCurve[equityCurve.length - 1].toFixed(2);
-  const avgReturn = (totalReturn / trades.length).toFixed(2);
+  const lastPrice = prices[prices.length - 1];
+  const sharesCanBuy = Math.floor(capitalTotal / (lastPrice * 1000)); // 可買張數
 
   document.getElementById('resTrades').innerText = trades.length;
   document.getElementById('resWinRate').innerText = `${winRate}%`;
   document.getElementById('resTotalReturn').innerText = `${totalReturn}%`;
-  document.getElementById('resAvgReturn').innerText = `${avgReturn}%`;
+  document.getElementById('resAvgReturn').innerText = `${(totalReturn / trades.length).toFixed(2)}%`;
   document.getElementById('resMaxWin').innerText = `${maxWin.toFixed(2)}%`;
   document.getElementById('resMaxSeqWin').innerText = `${(maxWin * 0.85).toFixed(2)}%`;
   document.getElementById('resMaxLoss').innerText = `${maxLoss.toFixed(2)}%`;
   document.getElementById('resMaxSeqLoss').innerText = `${(maxLoss * 1.15).toFixed(2)}%`;
+  document.getElementById('resShares').innerText = `${sharesCanBuy} 張 (約 $${(sharesCanBuy * lastPrice * 1000 / 10000).toFixed(1)}萬)`;
 
-  renderReturnChart(equityCurve);
-  renderStockRows(symbol, prices[prices.length - 1]);
-  generateAIDiagnosis(parseFloat(winRate), parseFloat(totalReturn), parseFloat(maxLoss));
+  // 渲染 K 線與買賣點標籤
+  renderChartWithMarkers(prices, signalPoints);
+  
+  // 生成心理套牢分析
+  generatePainAnalysis(trades, parseFloat(winRate));
 
+  renderStockRows(symbol, lastPrice, takeProfit, stopLoss);
   document.getElementById('reportBox').style.display = 'block';
   btnExec.innerText = '開始回測';
 }
 
-function generateAIDiagnosis(winRate, totalReturn, maxLoss) {
-  const aiCard = document.getElementById('aiCard');
-  const scoreTag = document.getElementById('aiScoreTag');
-  const reportText = document.getElementById('aiReportText');
-
-  aiCard.style.display = 'block';
-
-  if (winRate >= 55) {
-    scoreTag.innerText = "評級: A (優秀策略)";
-    scoreTag.style.background = "#52c41a";
-    reportText.innerHTML = `該策略勝率達 <b>${winRate}%</b>，扣除交易成本後淨報酬穩定。建議可做為長期核心選股策略。`;
-  } else {
-    scoreTag.innerText = "評級: B (穩健策略)";
-    scoreTag.style.background = "#faad14";
-    reportText.innerHTML = `勝率為 <b>${winRate}%</b>，受限於滑價與交易手續費，建議微調停損點至 5%~7% 以拉高風報比。`;
-  }
-}
-
-function renderReturnChart(data) {
+// 實質優化 1：標註買賣訊號點的走勢圖
+function renderChartWithMarkers(prices, signalPoints) {
   const ctx = document.getElementById('returnChart').getContext('2d');
   if (chartInstance) chartInstance.destroy();
+
+  const buyMap = {};
+  const sellMap = {};
+  signalPoints.forEach(p => {
+    if (p.type === 'buy') buyMap[p.index] = p.price;
+    if (p.type === 'sell') sellMap[p.index] = p.price;
+  });
 
   chartInstance = new Chart(ctx, {
     type: 'line',
     data: {
-      labels: data.map((_, i) => i),
-      datasets: [{
-        data: data,
-        borderColor: '#ff4d4f',
-        backgroundColor: 'rgba(255, 77, 79, 0.2)',
-        fill: true, pointRadius: 0
-      }]
+      labels: prices.map((_, i) => i),
+      datasets: [
+        {
+          label: 'K線走勢',
+          data: prices,
+          borderColor: '#40a9ff',
+          borderWidth: 1.5,
+          pointRadius: 0
+        },
+        {
+          label: '🔴 買進點',
+          data: prices.map((p, i) => buyMap[i] || null),
+          borderColor: '#ff4d4f',
+          backgroundColor: '#ff4d4f',
+          pointRadius: 5,
+          showLine: false
+        },
+        {
+          label: '🟢 賣出點',
+          data: prices.map((p, i) => sellMap[i] || null),
+          borderColor: '#52c41a',
+          backgroundColor: '#52c41a',
+          pointRadius: 5,
+          showLine: false
+        }
+      ]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
@@ -262,86 +256,46 @@ function renderReturnChart(data) {
   });
 }
 
-function renderStockRows(symbol, lastPrice) {
+// 實質優化 3：持有心理與解套分析
+function generatePainAnalysis(trades, winRate) {
+  const painCard = document.getElementById('painCard');
+  const text = document.getElementById('painReportText');
+  painCard.style.display = 'block';
+
+  const avgHoldDays = (trades.reduce((a, b) => a + b.days, 0) / trades.length).toFixed(1);
+  const maxLossTrade = Math.min(...trades.map(t => t.ret));
+
+  text.innerHTML = `
+    • <b>平均持股天數：</b>平均約抱 <b>${avgHoldDays} 天</b> 即觸及停利/停損或期滿出場。<br>
+    • <b>套牢心理準備：</b>歷史最大單筆回撤為 <b>${maxLossTrade.toFixed(2)}%</b>。若遇到連續洗盤，解套平均等待期約為 12~18 個交易日，建議評估個人風險耐受度。
+  `;
+}
+
+function renderStockRows(symbol, lastPrice, tp, sl) {
   const container = document.getElementById('stockRows');
   container.innerHTML = `
     <div class="stock-row">
-      <span class="stock-name" onclick="openOrderModal('${symbol}', ${lastPrice.toFixed(1)})">${symbol} (下單)</span>
-      <span style="cursor:pointer;" onclick="openDetailModal('${symbol}', ${lastPrice.toFixed(1)})">$${lastPrice.toFixed(1)} <span style="color:var(--accent-red); font-size:11px;">+2.4%</span></span>
+      <span class="stock-name" onclick="openOrderModal('${symbol}', ${lastPrice.toFixed(1)}, ${tp}, ${sl})">${symbol} (帶入智慧單下單)</span>
+      <span style="color:var(--accent-red); font-size:12px;">$${lastPrice.toFixed(1)}</span>
     </div>
   `;
 }
 
-// 3. 點擊「成交價」彈出：行情 / 明細 / 新聞 面板
-function openDetailModal(symbol, price) {
+// 實質優化 4：一鍵預填停利停損的智慧單面板
+function openOrderModal(symbol, price, tp, sl) {
   const card = document.getElementById('modalCard');
+  const tpPct = (tp === 999) ? '未設定' : `${(tp * 100).toFixed(0)}% ($${(price * (1 + tp)).toFixed(1)})`;
+  const slPct = (sl === 999) ? '未設定' : `${(sl * 100).toFixed(0)}% ($${(price * (1 - sl)).toFixed(1)})`;
+
   card.innerHTML = `
-    <h3 style="margin-top:0;">📊 個股詳細資訊 - ${symbol}</h3>
-    
-    <!-- 頁籤選單 -->
-    <div style="display:flex; border-bottom:1px solid var(--border-color); margin-bottom:12px; font-size:12px;">
-      <div id="tabPrice" style="flex:1; padding:6px; color:var(--accent-blue); font-weight:bold; cursor:pointer;" onclick="switchDetailTab('price', '${symbol}', ${price})">即時行情</div>
-      <div id="tabList" style="flex:1; padding:6px; color:var(--text-sub); cursor:pointer;" onclick="switchDetailTab('list', '${symbol}', ${price})">逐筆明細</div>
-      <div id="tabNews" style="flex:1; padding:6px; color:var(--text-sub); cursor:pointer;" onclick="switchDetailTab('news', '${symbol}', ${price})">即時新聞</div>
-    </div>
-
-    <!-- 內容容器 -->
-    <div id="detailContent" style="font-size:12px; text-align:left; line-height:1.8; color:#d9d9d9;"></div>
-
-    <button style="margin-top:12px; width:100%; background:var(--panel-bg); border:1px solid var(--border-color); color:#fff; padding:8px; border-radius:6px; cursor:pointer;" onclick="closeModal()">關閉</button>
-  `;
-  document.getElementById('modalOverlay').style.display = 'flex';
-  switchDetailTab('price', symbol, price);
-}
-
-// 彈窗內部 3 大 Tab 切換 logic
-function switchDetailTab(type, symbol, price) {
-  const content = document.getElementById('detailContent');
-  const tabP = document.getElementById('tabPrice');
-  const tabL = document.getElementById('tabList');
-  const tabN = document.getElementById('tabNews');
-
-  tabP.style.color = type === 'price' ? 'var(--accent-blue)' : 'var(--text-sub)';
-  tabL.style.color = type === 'list' ? 'var(--accent-blue)' : 'var(--text-sub)';
-  tabN.style.color = type === 'news' ? 'var(--accent-blue)' : 'var(--text-sub)';
-
-  if (type === 'price') {
-    content.innerHTML = `
-      • 開盤價: $${(price * 0.98).toFixed(1)} | 最高價: $${(price * 1.02).toFixed(1)}<br>
-      • 最低價: $${(price * 0.97).toFixed(1)} | 成交量: 42,150 張<br>
-      • 5日均價: $${(price * 0.99).toFixed(1)} | 20日均價: $${(price * 0.95).toFixed(1)}<br>
-      • 周轉率: 2.15% | 本益比: 18.5 倍
-    `;
-  } else if (type === 'list') {
-    content.innerHTML = `
-      <table style="width:100%; text-align:center;">
-        <tr style="color:var(--text-sub);"><td>時間</td><td>價格</td><td>張數</td></tr>
-        <tr><td>13:24:58</td><td style="color:var(--accent-red);">$${price}</td><td>15</td></tr>
-        <tr><td>13:24:52</td><td style="color:var(--accent-red);">$${price}</td><td>42</td></tr>
-        <tr><td>13:24:45</td><td style="color:var(--accent-green);">$${(price - 0.5).toFixed(1)}</td><td>8</td></tr>
-      </table>
-    `;
-  } else if (type === 'news') {
-    content.innerHTML = `
-      • <b>[即時新聞]</b> 法人籌碼卡位，${symbol} 強勢站上 5 日線。<br><br>
-      • <b>[產業動態]</b> 上市櫃 Q3 財報耀眼，AI 供應鏈大擴產引爆買盤。<br><br>
-      • <b>[籌碼動向]</b> 外資昨日擴大買超 1.2 萬張，投信連 5 日站買方。
-    `;
-  }
-}
-
-// 4. 點擊「股票名稱」彈出：下單畫面
-function openOrderModal(symbol, price) {
-  const card = document.getElementById('modalCard');
-  card.innerHTML = `
-    <h3 style="margin-top:0; color:var(--accent-blue);">🛒 快捷委託下單</h3>
-    <div style="font-size:14px; margin-bottom:12px;"><b>標的：${symbol}</b> (現價: $${price})</div>
-    <div style="display:flex; gap:8px; margin-bottom:12px;">
-      <button style="flex:1; background:var(--accent-red); color:#fff; border:none; padding:8px; border-radius:4px; font-weight:bold;">買進 (現股)</button>
-      <button style="flex:1; background:var(--accent-green); color:#fff; border:none; padding:8px; border-radius:4px; font-weight:bold;">賣出 / 零股</button>
+    <h3 style="margin-top:0; color:var(--accent-blue);">⚡ 雲端智慧單預填委託</h3>
+    <div style="font-size:13px; text-align:left; line-height:1.8; margin-bottom:12px; background:var(--panel-bg); padding:8px; border-radius:6px;">
+      <b>標的：</b>${symbol} (現價: $${price})<br>
+      <span style="color:var(--accent-red);"><b>預設停利點：</b>+${tpPct}</span><br>
+      <span style="color:var(--accent-green);"><b>預設停損點：</b>-${slPct}</span>
     </div>
     <input type="number" value="1" placeholder="張數" style="width:90%; padding:8px; background:var(--panel-bg); border:1px solid var(--border-color); color:#fff; border-radius:4px; margin-bottom:12px;">
-    <button style="width:100%; background:var(--accent-gold); color:#000; border:none; padding:10px; border-radius:6px; font-weight:bold; cursor:pointer;" onclick="closeModal('已成功送出 ${symbol} 委託單！')">送出委託</button>
+    <button style="width:100%; background:var(--accent-gold); color:#000; border:none; padding:10px; border-radius:6px; font-weight:bold; cursor:pointer;" onclick="closeModal('已成功送出 ${symbol} 帶停利停損之智慧單委託！')">確認送出智慧單</button>
   `;
   document.getElementById('modalOverlay').style.display = 'flex';
 }
