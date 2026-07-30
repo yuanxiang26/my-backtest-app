@@ -50,8 +50,10 @@
     .grid-btn { background: var(--panel-bg); border: 1px solid var(--border-color); color: #fff; padding: 10px; border-radius: 6px; font-size: 12px; text-align: center; cursor: pointer; }
     .grid-btn.selected { border-color: var(--accent-blue); background: #112a45; color: var(--accent-blue); }
 
+    /* 實質優化：資金池與壓力測試面板 */
     .capital-box { background: #101625; border: 1px dashed var(--accent-blue); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; font-size: 12px; }
-    .capital-row { display: flex; justify-content: space-between; align-items: center; }
+    .capital-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+    .capital-row:last-child { margin-bottom: 0; }
 
     .backtest-controls { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 8px; }
     .control-select { background: var(--panel-bg); color: #fff; border: 1px solid var(--border-color); padding: 8px; border-radius: 6px; font-size: 12px; outline: none; }
@@ -60,7 +62,6 @@
     .dir-btn.active { background: var(--accent-blue); }
     .btn-exec { background: var(--accent-gold); color: #000; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 13px; }
 
-    /* 心理成本卡片 */
     .pain-card { background: linear-gradient(135deg, #1f1d2b 0%, #2a1a2e 100%); border: 1px solid #ff7875; border-radius: 8px; padding: 12px; margin-bottom: 12px; display: none; font-size: 12px; }
 
     .report-box { background: var(--panel-bg); border-radius: 8px; padding: 12px; display: none; }
@@ -104,13 +105,21 @@
 
   <div id="condGrid" class="cond-grid"></div>
 
-  <!-- 實質優化：資金與配張選單 -->
+  <!-- 實質優化：本金與極端行情壓力測試控制 -->
   <div class="capital-box">
     <div class="capital-row">
       <span>假設投入總資金:</span>
       <div>
         <input type="number" id="capitalInput" value="100" style="width:60px; background:var(--panel-bg); border:1px solid var(--border-color); color:#fff; border-radius:4px; padding:2px 4px; text-align:center; font-size:12px;"> 萬元
       </div>
+    </div>
+    <div class="capital-row">
+      <span>歷史極端情境壓力測試:</span>
+      <select id="stressSelect" style="background:var(--panel-bg); color:#fff; border:1px solid var(--border-color); border-radius:4px; padding:2px 4px; font-size:11px;">
+        <option value="none">正常全區間回測</option>
+        <option value="2020">2020年 疫情崩盤洗牌</option>
+        <option value="2022">2022年 升息循環回檔</option>
+      </select>
     </div>
   </div>
 
@@ -150,9 +159,8 @@
     <button class="btn-exec" id="btnExec" onclick="startYahooBacktest()">開始回測</button>
   </div>
 
-  <!-- 實質優化：持有心理與套牢成本面板 -->
   <div id="painCard" class="pain-card">
-    <div style="font-weight:bold; color:#ff7875; margin-bottom:6px;">🧠 投資心理與套牢天數分析</div>
+    <div style="font-weight:bold; color:#ff7875; margin-bottom:6px;">🧠 投資心理與極端風險分析</div>
     <div id="painReportText" style="color:#d9d9d9; line-height:1.5;"></div>
   </div>
 
@@ -164,18 +172,18 @@
     <table class="report-table">
       <tr><td>交易次數</td><td id="resTrades">0</td></tr>
       <tr><td>勝率</td><td id="resWinRate" style="color:var(--accent-red);">0.00%</td></tr>
-      <tr><td>總報酬率</td><td id="resTotalReturn" style="color:var(--accent-red);">0.00%</td></tr>
-      <tr><td>平均報酬率</td><td id="resAvgReturn">0.00%</td></tr>
+      <tr><td>總報酬率 (淨利)</td><td id="resTotalReturn" style="color:var(--accent-red);">0.00%</td></tr>
+      <tr><td>平均單筆報酬率</td><td id="resAvgReturn">0.00%</td></tr>
       <tr><td>最大獲利率</td><td id="resMaxWin" style="color:var(--accent-red);">0.00%</td></tr>
       <tr><td>最大連續獲利率</td><td id="resMaxSeqWin" style="color:var(--accent-red);">0.00%</td></tr>
       <tr><td>最大虧損率</td><td id="resMaxLoss" style="color:var(--accent-green);">0.00%</td></tr>
-      <tr><td>最大連續虧損率</td><td id="resMaxSeqLoss" style="color:var(--accent-green);">0.00%</td></tr>
-      <tr style="border-top:1px dashed var(--accent-blue);"><td>可買張數 (以100萬算)</td><td id="resShares" style="color:var(--accent-gold);">0 張</td></tr>
+      <tr><td>最大資產撤退 (MDD)</td><td id="resMaxSeqLoss" style="color:var(--accent-green);">0.00%</td></tr>
+      <tr style="border-top:1px dashed var(--accent-blue);"><td>結算總資產</td><td id="resShares" style="color:var(--accent-gold);">NT$ 0 元</td></tr>
     </table>
   </div>
 
   <div class="stock-list">
-    <div style="font-size: 12px; color: var(--text-sub); margin-bottom: 6px;">符合策略個股 (點擊名稱帶入智慧單下單):</div>
+    <div style="font-size: 12px; color: var(--text-sub); margin-bottom: 6px;">符合策略個股 (點擊名稱預填智慧單下單):</div>
     <div id="stockRows"></div>
   </div>
 </div>
